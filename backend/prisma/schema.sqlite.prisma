@@ -1,0 +1,1122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// 1. IDENTITY & ROLES
+// -----------------------------------------------------------------------------
+
+
+
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  role              String    @default("STUDENT") // ASPIRANT, STUDENT, ALUMNI, ADMIN
+  isEmailVerified   Boolean   @default(false)
+  isAdminAuthorized Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // 1-to-1 relations
+  profile           Profile?
+  privacySettings   PrivacySettings?
+  securitySettings  SecuritySettings?
+  mentorProfile     MentorProfile?
+
+  // 1-to-many relations
+  verifications     Verification[]        @relation("UserVerifications")
+  reviewedVerifs    Verification[]        @relation("ReviewerVerifications")
+  notes             Note[]
+  organizedEvents   Event[]               @relation("EventOrganizer")
+  eventRegistrations EventRegistration[]
+  createdCommunities Community[]          @relation("CommunityCreator")
+  communityMemberships CommunityMember[]
+  posts             CommunityPost[]
+  comments          CommunityComment[]
+  marketplaceItems  MarketplaceItem[]     @relation("ItemSeller")
+  buyTransactions   MarketplaceTransaction[] @relation("TransactionBuyer")
+  sellTransactions  MarketplaceTransaction[] @relation("TransactionSeller")
+  mentorshipRequests MentorshipRequest[]   @relation("MenteeRequests")
+  conversations     ConversationParticipant[]
+  sentMessages      Message[]
+  postedJobs        Job[]                 @relation("JobPoster")
+  jobApplications   JobApplication[]
+  sentReferrals     Referral[]            @relation("AlumniReferrals")
+  receivedReferrals Referral[]            @relation("StudentReferrals")
+  notifications     Notification[]
+  announcements     Announcement[]        @relation("AnnouncementAuthor")
+  submittedReports  Report[]              @relation("ReporterReports")
+  reviewedReports   Report[]              @relation("ReviewerReports")
+  roadmaps          CareerRoadmap[]
+  skills            SkillProgress[]
+  interviewSessions InterviewSession[]
+  aiRecommendations AIRecommendation[]
+  accountRecoveries AccountRecovery[]
+  sentConnections    UserConnection[]      @relation("SentConnections")
+  receivedConnections UserConnection[]     @relation("ReceivedConnections")
+  savedJobs          SavedJob[]
+  savedAlumni        SavedAlumni[]         @relation("UserSavedAlumni")
+  savedByAlumni      SavedAlumni[]         @relation("TargetSavedAlumni")
+  careerPreferences  CareerPreference?
+  savedColleges      SavedCollege[]
+  savedScholarships  SavedScholarship[]
+  admissionPredictions AdmissionPrediction[]
+  auditLogs         AuditLog[]            @relation("ActorAuditLogs")
+  paymentOrders     PaymentOrder[]
+  transactions      Transaction[]
+  entitlements      Entitlement[]
+  refundsProcessed  Refund[]              @relation("AdminRefundsProcessed")
+
+  @@index([email])
+  @@index([role])
+}
+
+model Profile {
+  id              String          @id @default(uuid())
+  userId          String          @unique
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName        String
+  bio             String?
+  avatarUrl       String?
+  headline        String?
+  phone           String?
+  location        String?
+  website         String?
+  github          String?
+  linkedin        String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Sub-profiles (role-specific extensions)
+  aspirantProfile AspirantProfile?
+  studentProfile  StudentProfile?
+  alumniProfile   AlumniProfile?
+  adminProfile    AdminProfile?
+
+  @@index([userId])
+}
+
+model AspirantProfile {
+  id                  String   @id @default(uuid())
+  profileId           String   @unique
+  profile             Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  targetDegree        String?
+  targetMajor         String?
+  targetUniversities  String?  // Comma or JSON separated
+  highSchool          String?
+  expectedGradYear    Int?
+  entranceExamScores  String?  // JSON string
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model StudentProfile {
+  id              String       @id @default(uuid())
+  profileId       String       @unique
+  profile         Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  institutionId   String?
+  institution     Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  studentIdNumber String?
+  degree          String?
+  major           String?
+  semester        Int?
+  cgpa            Float?
+  graduationYear  Int?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([institutionId])
+}
+
+model AlumniProfile {
+  id                String       @id @default(uuid())
+  profileId         String       @unique
+  profile           Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  institutionId     String?
+  institution       Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  degree            String?
+  graduationYear    Int?
+  currentCompany    String?
+  currentDesignation String?
+  industry          String?
+  yearsOfExperience Int?        @default(0)
+  willingToMentor   Boolean      @default(true)
+  willingToRefer    Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([institutionId])
+  @@index([currentCompany])
+}
+
+model AdminProfile {
+  id          String   @id @default(uuid())
+  profileId   String   @unique
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  department  String?
+  accessLevel String   @default("STANDARD") // STANDARD, SUPERADMIN
+  employeeId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Verification {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation("UserVerifications", fields: [userId], references: [id], onDelete: Cascade)
+  documentType    String    // STUDENT_ID, ALUMNI_DEGREE, ENROLLMENT_LETTER, GOVERNMENT_ID
+  documentUrl     String
+  status          String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewerId      String?
+  reviewer        User?     @relation("ReviewerVerifications", fields: [reviewerId], references: [id], onDelete: SetNull)
+  rejectionReason String?
+  submittedAt     DateTime  @default(now())
+  reviewedAt      DateTime?
+
+  @@index([userId])
+  @@index([status])
+}
+
+// -----------------------------------------------------------------------------
+// 2. ACADEMICS & INSTITUTIONS
+// -----------------------------------------------------------------------------
+
+model Institution {
+  id             String           @id @default(uuid())
+  name           String
+  code           String           @unique
+  domain         String?
+  address        String?
+  city           String?
+  state          String?
+  country        String           @default("India")
+  verified       Boolean          @default(false)
+  ranking        Int?
+  acceptanceRate Float?
+  averageFees    String?
+  overview       String?
+  campusSize     String?
+  websiteUrl     String?
+  logoUrl        String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  courses        Course[]
+  libraryItems   LibraryItem[]
+  events         Event[]
+  studentProfiles StudentProfile[]
+  alumniProfiles  AlumniProfile[]
+  programs       CollegeProgram[]
+  savedByUsers   SavedCollege[]
+  predictions    AdmissionPrediction[]
+
+  @@index([code])
+  @@index([country])
+}
+
+model Course {
+  id            String       @id @default(uuid())
+  institutionId String
+  institution   Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  code          String
+  name          String
+  department    String?
+  credits       Int          @default(3)
+  semester      Int?
+  description   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  notes         Note[]
+
+  @@unique([institutionId, code])
+  @@index([institutionId])
+}
+
+model Note {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId        String?
+  course          Course?   @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  title           String
+  description     String?
+  fileUrl         String
+  tags            String?   // JSON or comma-separated
+  isPublic        Boolean   @default(false)
+  status          String    @default("PENDING_REVIEW") // PENDING_REVIEW, PUBLISHED, REJECTED, REMOVAL_REQUESTED, REMOVED
+  rejectionReason String?
+  removalReason   String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  removedBy       String?
+  removedAt       DateTime?
+  downloadsCount  Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([courseId])
+  @@index([status])
+}
+
+model LibraryItem {
+  id              String      @id @default(uuid())
+  institutionId   String
+  institution     Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  title           String
+  author          String
+  isbn            String?
+  category        String?
+  totalCopies     Int         @default(1)
+  availableCopies Int         @default(1)
+  location        String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([institutionId])
+  @@index([title])
+}
+
+// -----------------------------------------------------------------------------
+// 3. EVENTS & CAMPUS ENGAGEMENT
+// -----------------------------------------------------------------------------
+
+model Event {
+  id              String              @id @default(uuid())
+  institutionId   String?
+  institution     Institution?        @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  organizerId     String
+  organizer       User                @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+  title           String
+  description     String
+  category        String              // WORKSHOP, WEBINAR, HACKATHON, CULTURAL, CAREER_FAIR
+  location        String
+  isOnline        Boolean             @default(false)
+  meetingUrl      String?
+  startTime       DateTime
+  endTime         DateTime
+  capacity        Int                 @default(100)
+  registeredCount Int                 @default(0)
+  status          String              @default("UPCOMING") // UPCOMING, ONGOING, COMPLETED, CANCELLED
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  registrations   EventRegistration[]
+
+  @@index([organizerId])
+  @@index([status])
+  @@index([startTime])
+}
+
+model EventRegistration {
+  id           String   @id @default(uuid())
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registeredAt DateTime @default(now())
+  attended     Boolean  @default(false)
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+}
+
+// -----------------------------------------------------------------------------
+// 4. COMMUNITY & SOCIAL
+// -----------------------------------------------------------------------------
+
+model Community {
+  id          String            @id @default(uuid())
+  name        String
+  slug        String            @unique
+  description String
+  coverImage  String?
+  icon        String?
+  isPrivate   Boolean           @default(false)
+  memberCount Int               @default(1)
+  creatorId   String
+  creator     User              @relation("CommunityCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  members     CommunityMember[]
+  posts       CommunityPost[]
+
+  @@index([slug])
+  @@index([creatorId])
+}
+
+model CommunityMember {
+  id          String    @id @default(uuid())
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        String    @default("MEMBER") // MEMBER, MODERATOR, ADMIN
+  joinedAt    DateTime  @default(now())
+
+  @@unique([communityId, userId])
+  @@index([communityId])
+  @@index([userId])
+}
+
+model CommunityPost {
+  id            String             @id @default(uuid())
+  communityId   String
+  community     Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title         String
+  content       String
+  mediaUrls     String?            // JSON array
+  likesCount    Int                @default(0)
+  commentsCount Int                @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  comments      CommunityComment[]
+
+  @@index([communityId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model CommunityComment {
+  id          String             @id @default(uuid())
+  postId      String
+  post        CommunityPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content     String
+  parentId    String?
+  parent      CommunityComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     CommunityComment[] @relation("CommentReplies")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([postId])
+  @@index([authorId])
+}
+
+// -----------------------------------------------------------------------------
+// 5. MARKETPLACE & COMMERCE
+// -----------------------------------------------------------------------------
+
+model MarketplaceItem {
+  id          String                   @id @default(uuid())
+  sellerId    String
+  seller      User                     @relation("ItemSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  price       Float
+  category    String                   // TEXTBOOK, ELECTRONICS, NOTES, FURNITURE, OTHER
+  condition   String                   // NEW, LIKE_NEW, GOOD, FAIR
+  images      String?                  // JSON array
+  status      String                   @default("AVAILABLE") // AVAILABLE, RESERVED, SOLD
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  transactions MarketplaceTransaction[]
+
+  @@index([sellerId])
+  @@index([category])
+  @@index([status])
+}
+
+model MarketplaceTransaction {
+  id              String          @id @default(uuid())
+  itemId          String
+  item            MarketplaceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  buyerId         String
+  buyer           User            @relation("TransactionBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId        String
+  seller          User            @relation("TransactionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  amount          Float
+  status          String          @default("COMPLETED") // PENDING, COMPLETED, CANCELLED
+  transactionDate DateTime        @default(now())
+
+  @@index([itemId])
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+// -----------------------------------------------------------------------------
+// 6. MENTORSHIP & SESSIONS
+// -----------------------------------------------------------------------------
+
+model MentorProfile {
+  id                 String              @id @default(uuid())
+  userId             String              @unique
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title              String
+  company            String
+  expertise          String              // JSON or comma-separated
+  hourlyRate         Float               @default(0)
+  maxMentees         Int                 @default(5)
+  isAcceptingMentees Boolean             @default(true)
+  bio                String?
+  rating             Float               @default(5.0)
+  reviewsCount       Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  requests           MentorshipRequest[]
+
+  @@index([userId])
+  @@index([company])
+}
+
+model MentorshipRequest {
+  id          String             @id @default(uuid())
+  mentorId    String
+  mentor      MentorProfile      @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  menteeId    String
+  mentee      User               @relation("MenteeRequests", fields: [menteeId], references: [id], onDelete: Cascade)
+  goal        String
+  message     String
+  status      String             @default("PENDING") // PENDING, ACCEPTED, DECLINED, COMPLETED
+  requestedAt DateTime           @default(now())
+  respondedAt DateTime?
+
+  sessions    MentorshipSession[]
+
+  @@index([mentorId])
+  @@index([menteeId])
+  @@index([status])
+}
+
+model MentorshipSession {
+  id              String            @id @default(uuid())
+  requestId       String
+  request         MentorshipRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  scheduledAt     DateTime
+  durationMinutes Int               @default(45)
+  meetingUrl      String?
+  notes           String?
+  status          String            @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([requestId])
+}
+
+// -----------------------------------------------------------------------------
+// 7. MESSAGING & CHAT
+// -----------------------------------------------------------------------------
+
+model Conversation {
+  id           String                    @id @default(uuid())
+  isGroup      Boolean                   @default(false)
+  title        String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime?
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  mediaUrl       String?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// 8. JOBS, CAREERS & REFERRALS
+// -----------------------------------------------------------------------------
+
+model Company {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  logoUrl     String?
+  website     String?
+  industry    String?
+  description String?
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobs        Job[]
+
+  @@index([name])
+}
+
+model Job {
+  id           String           @id @default(uuid())
+  companyId    String
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  posterId     String
+  poster       User             @relation("JobPoster", fields: [posterId], references: [id], onDelete: Cascade)
+  title        String
+  description  String
+  roleType     String           @default("FULL_TIME") // FULL_TIME, PART_TIME, INTERNSHIP, CONTRACT
+  location     String
+  isRemote     Boolean          @default(false)
+  salaryRange  String?
+  requirements String?
+  status       String           @default("ACTIVE") // ACTIVE, CLOSED
+  deadline     DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  applications JobApplication[]
+  referrals    Referral[]
+  savedBy      SavedJob[]
+
+  @@index([companyId])
+  @@index([posterId])
+  @@index([status])
+}
+
+model JobApplication {
+  id          String   @id @default(uuid())
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  applicantId String
+  applicant   User     @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  resumeUrl   String
+  coverLetter String?
+  status      String   @default("APPLIED") // APPLIED, UNDER_REVIEW, SHORTLISTED, INTERVIEWING, REJECTED, ACCEPTED
+  appliedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([jobId, applicantId])
+  @@index([jobId])
+  @@index([applicantId])
+}
+
+model Referral {
+  id          String   @id @default(uuid())
+  alumniId    String
+  alumni      User     @relation("AlumniReferrals", fields: [alumniId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User     @relation("StudentReferrals", fields: [studentId], references: [id], onDelete: Cascade)
+  jobId       String?
+  job         Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  companyName String
+  status      String   @default("REQUESTED") // REQUESTED, SUBMITTED, REJECTED, HIRED
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([alumniId])
+  @@index([studentId])
+}
+
+// -----------------------------------------------------------------------------
+// 9. ENGAGEMENT, SAFETY & AUDIT
+// -----------------------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // SYSTEM, MENTORSHIP, APPLICATION, MESSAGE, EVENT, VERIFICATION
+  title     String
+  message   String
+  data      String?  // JSON payload
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model Announcement {
+  id          String   @id @default(uuid())
+  authorId    String
+  author      User     @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title       String
+  content     String
+  targetRole  String?  // null for all, or ASPIRANT/STUDENT/ALUMNI/ADMIN
+  priority    String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([authorId])
+}
+
+model Report {
+  id              String    @id @default(uuid())
+  reporterId      String
+  reporter        User      @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType      String    // USER, POST, COMMENT, MARKETPLACE_ITEM, MESSAGE
+  targetId        String
+  reason          String
+  status          String    @default("PENDING") // PENDING, INVESTIGATING, RESOLVED, DISMISSED
+  resolutionNotes String?
+  reviewerId      String?
+  reviewer        User?     @relation("ReviewerReports", fields: [reviewerId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([reporterId])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  actor      User     @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: Cascade)
+  action     String   // ADMIN_APPROVED_VERIFICATION, ADMIN_REMOVED_LISTING, ADMIN_SUSPENDED_USER, ADMIN_RESOLVED_REPORT
+  targetType String
+  targetId   String
+  metadata   String?  // JSON payload
+  timestamp  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([timestamp])
+}
+
+// -----------------------------------------------------------------------------
+// 10. AI RECOMMENDATIONS & CAREER ROADMAP
+// -----------------------------------------------------------------------------
+
+model CareerRoadmap {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title              String
+  targetRole         String
+  milestones         String   // JSON array of milestone objects
+  progressPercentage Float    @default(0.0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model SkillProgress {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillName       String
+  category        String?
+  level           String   @default("BEGINNER") // BEGINNER, INTERMEDIATE, ADVANCED, EXPERT
+  verified        Boolean  @default(false)
+  assessmentScore Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, skillName])
+  @@index([userId])
+}
+
+model InterviewSession {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleTarget      String
+  topic           String
+  durationMinutes Int      @default(30)
+  feedbackScore   Float?
+  transcript      String?
+  strengths       String?  // JSON or text
+  improvements    String?  // JSON or text
+  completedAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AIRecommendation {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // JOB, MENTOR, EVENT, COURSE, COMMUNITY
+  referenceId String
+  score       Float    @default(0.0)
+  reasoning   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+}
+
+// -----------------------------------------------------------------------------
+// 11. SETTINGS & RECOVERY
+// -----------------------------------------------------------------------------
+
+model PrivacySettings {
+  id                     String   @id @default(uuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  showEmail              Boolean  @default(false)
+  showPhone              Boolean  @default(false)
+  showGpa                Boolean  @default(false)
+  allowMessagesFrom      String   @default("ALL") // ALL, CONNECTIONS_ONLY, NOBODY
+  allowMentorshipRequests Boolean @default(true)
+  updatedAt              DateTime @updatedAt
+}
+
+model SecuritySettings {
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  twoFactorEnabled    Boolean   @default(false)
+  loginAlertsEnabled  Boolean   @default(true)
+  lastPasswordChange  DateTime?
+  updatedAt           DateTime  @updatedAt
+}
+
+model PlatformSettings {
+  id                    String   @id @default("GLOBAL_SETTINGS")
+  maintenanceMode       Boolean  @default(false)
+  allowNewRegistrations Boolean  @default(true)
+  autoModeration        Boolean  @default(true)
+  strictVerification    Boolean  @default(true)
+  require2FAForAdmins   Boolean  @default(true)
+  systemVersion         String   @default("2.4.0-phase7")
+  lastBackup            DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model OtpToken {
+  id           String    @id @default(uuid())
+  email        String
+  otpHash      String
+  purpose      String    // EMAIL_VERIFICATION, PASSWORD_RESET, ACCOUNT_RECOVERY
+  expiresAt    DateTime
+  attemptCount Int       @default(0)
+  maxAttempts  Int       @default(5)
+  isUsed       Boolean   @default(false)
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([email, purpose])
+  @@index([expiresAt])
+}
+
+model AccountRecovery {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryEmail String
+  token         String
+  expiresAt     DateTime
+  isUsed        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+model UserConnection {
+  id          String   @id @default(uuid())
+  requesterId String
+  requester   User     @relation("SentConnections", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiverId  String
+  receiver    User     @relation("ReceivedConnections", fields: [receiverId], references: [id], onDelete: Cascade)
+  status      String   @default("PENDING") // PENDING, ACCEPTED, DECLINED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([requesterId, receiverId])
+  @@index([requesterId])
+  @@index([receiverId])
+  @@index([status])
+}
+
+model SavedJob {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  savedAt   DateTime @default(now())
+
+  @@unique([userId, jobId])
+  @@index([userId])
+  @@index([jobId])
+}
+
+model SavedAlumni {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation("UserSavedAlumni", fields: [userId], references: [id], onDelete: Cascade)
+  alumniId  String
+  alumni    User     @relation("TargetSavedAlumni", fields: [alumniId], references: [id], onDelete: Cascade)
+  savedAt   DateTime @default(now())
+
+  @@unique([userId, alumniId])
+  @@index([userId])
+  @@index([alumniId])
+}
+
+model CareerPreference {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredRoles      String?  // JSON or comma-separated
+  preferredLocations  String?  // JSON or comma-separated
+  targetSalary        String?
+  remotePreference    String   @default("ANY") // REMOTE, HYBRID, ONSITE, ANY
+  industries          String?
+  jobAlerts           Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// -----------------------------------------------------------------------------
+// 12. ASPIRANT MODULE: COLLEGES, SCHOLARSHIPS & PREDICTIONS
+// -----------------------------------------------------------------------------
+
+model CollegeProgram {
+  id             String      @id @default(uuid())
+  institutionId  String
+  institution    Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  name           String
+  degree         String      // B.TECH, MS, MBA, MBBS, BBA, BSC
+  major          String
+  durationYears  Float       @default(4.0)
+  tuitionFee     String
+  minGpa         Float?
+  entranceExams  String?     // JSON array e.g. ["JEE", "SAT"]
+  deadline       String?
+  overview       String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([institutionId])
+  @@index([degree])
+}
+
+model SavedCollege {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  savedAt       DateTime    @default(now())
+
+  @@unique([userId, institutionId])
+  @@index([userId])
+  @@index([institutionId])
+}
+
+model Scholarship {
+  id             String             @id @default(uuid())
+  name           String
+  provider       String
+  amount         String
+  deadline       String
+  eligibility    String
+  description    String
+  requirements   String?            // JSON or text
+  applicationUrl String?
+  category       String             @default("MERIT") // MERIT, NEED_BASED, WOMEN_IN_TECH, INTERNATIONAL, MINORITY
+  country        String             @default("India")
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  savedByUsers   SavedScholarship[]
+
+  @@index([category])
+  @@index([country])
+}
+
+model SavedScholarship {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scholarshipId String
+  scholarship   Scholarship @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+  savedAt       DateTime    @default(now())
+
+  @@unique([userId, scholarshipId])
+  @@index([userId])
+  @@index([scholarshipId])
+}
+
+model AdmissionPrediction {
+  id                    String       @id @default(uuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institutionId         String?
+  institution           Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  institutionName       String
+  programName           String
+  degree                String       @default("B.TECH")
+  gpa                   Float
+  testType              String       // JEE, SAT, GRE, NEET, IELTS
+  testScore             Float
+  predictionPercentage  Float        // 0.0 - 100.0
+  qualificationStatus   String       // STRONG_CANDIDATE, COMPETITIVE, REACH, UNLIKELY
+  feedback              String
+  recommendations       String?      // JSON array of strings
+  createdAt             DateTime     @default(now())
+
+  @@index([userId])
+  @@index([institutionId])
+}
+
+// -----------------------------------------------------------------------------
+// 15. PLATFORM MONETIZATION & PAYMENT SYSTEM
+// -----------------------------------------------------------------------------
+
+model Product {
+  id          String         @id @default(uuid())
+  sku         String         @unique
+  title       String
+  description String
+  amountPaise Int            // Monetary amount in integer paise (e.g. 49900 = ₹499)
+  currency    String         @default("INR")
+  targetRole  String         @default("ALL") // ALL, STUDENT, ASPIRANT, ALUMNI
+  productType String         // STUDENT_PREMIUM, ASPIRANT_PREMIUM, ALUMNI_PREMIUM, AI_CREDITS, MENTORSHIP, CAREER_SERVICE, PAID_EVENT
+  isActive    Boolean        @default(true)
+  metadata    String?        // JSON string for additional attributes
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  orders       PaymentOrder[]
+  transactions Transaction[]
+  entitlements Entitlement[]
+
+  @@index([targetRole])
+  @@index([productType])
+  @@index([isActive])
+}
+
+model PaymentOrder {
+  id              String       @id @default(uuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  amountPaise     Int          // Server-enforced integer paise
+  currency        String       @default("INR")
+  provider        String       @default("RAZORPAY")
+  providerOrderId String       @unique
+  idempotencyKey  String       @unique
+  status          String       @default("PENDING") // PENDING, PROCESSING, PAID, FAILED, EXPIRED
+  metadata        String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  transaction     Transaction?
+
+  @@index([userId])
+  @@index([productId])
+  @@index([status])
+  @@index([providerOrderId])
+}
+
+model Transaction {
+  id                String       @id @default(uuid())
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  paymentOrderId    String       @unique
+  paymentOrder      PaymentOrder @relation(fields: [paymentOrderId], references: [id], onDelete: Restrict)
+  amountPaise       Int          // Settled integer paise
+  currency          String       @default("INR")
+  provider          String       @default("RAZORPAY")
+  providerPaymentId String       @unique
+  paymentMethod     String       @default("UPI") // UPI, CARD, NETBANKING, WALLET
+  status            String       @default("PENDING") // PENDING, AUTHORIZED, PAID, FAILED, REFUNDED, PARTIALLY_REFUNDED
+  failureReason     String?
+  paidAt            DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  refunds           Refund[]
+  entitlement       Entitlement?
+
+  @@index([userId])
+  @@index([productId])
+  @@index([status])
+  @@index([providerPaymentId])
+  @@index([createdAt])
+}
+
+model Refund {
+  id                 String      @id @default(uuid())
+  transactionId      String
+  transaction        Transaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  amountPaise        Int         // Integer paise refunded
+  currency           String      @default("INR")
+  reason             String
+  status             String      @default("PENDING") // PENDING, PROCESSED, FAILED
+  providerRefundId   String?     @unique
+  processedByAdminId String
+  processedByAdmin   User        @relation("AdminRefundsProcessed", fields: [processedByAdminId], references: [id], onDelete: Restrict)
+  adminNotes         String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@index([transactionId])
+  @@index([processedByAdminId])
+  @@index([status])
+}
+
+model Entitlement {
+  id                  String      @id @default(uuid())
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  status              String      @default("ACTIVE") // ACTIVE, EXPIRED, REVOKED
+  validFrom           DateTime    @default(now())
+  validUntil          DateTime?
+  sourceTransactionId String      @unique
+  sourceTransaction   Transaction @relation(fields: [sourceTransactionId], references: [id], onDelete: Restrict)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([productId])
+  @@index([status])
+}
+
+model WebhookEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  eventType   String
+  provider    String   @default("RAZORPAY")
+  status      String   @default("PROCESSED") // PROCESSED, IGNORED, FAILED
+  payload     String   // Raw webhook JSON payload
+  createdAt   DateTime @default(now())
+  processedAt DateTime @default(now())
+
+  @@index([eventId])
+  @@index([eventType])
+}
+
