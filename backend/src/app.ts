@@ -6,9 +6,7 @@ import { errorHandler } from './middleware/error.middleware';
 
 const productionOrigins = [
   'https://campusverse.edu',
-  'https://www.campusverse.edu',
-  'https://app.campusverse.edu',
-  'https://admin.campusverse.edu'
+  'https://www.campusverse.edu'
 ];
 
 const customOrigins = env.CORS_ORIGIN

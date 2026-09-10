@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: campusverse-api
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: CORS_ORIGIN
+        value: https://campusverse.edu,https://www.campusverse.edu
+      - key: OTP_EMAIL_PROVIDER
+        value: resend
+      - key: OTP_FROM_EMAIL
+        value: noreply@campusverse.edu
+      - key: OTP_FROM_NAME
+        value: CampusVerse
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: RESEND_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
