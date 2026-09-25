@@ -246,6 +246,7 @@ export class OtpService {
       where: { id: user.id },
       data: {
         passwordHash: newPasswordHash,
+        sessionVersion: { increment: 1 },
         securitySettings: {
           upsert: {
             create: { lastPasswordChange: new Date() },

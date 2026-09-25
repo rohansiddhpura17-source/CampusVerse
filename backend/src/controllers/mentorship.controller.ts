@@ -19,6 +19,11 @@ export const updateSessionSchema = z.object({
   meetingUrl: z.string().url().optional()
 });
 
+export const createMentorshipReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  feedback: z.string().max(1000).optional()
+});
+
 export async function getMentors(req: Request, res: Response): Promise<void> {
   const search = req.query.search as string | undefined;
   const expertise = req.query.expertise as string | undefined;
@@ -264,3 +269,67 @@ export async function updateMentorshipSession(req: Request, res: Response): Prom
 
   sendSuccess(res, updated, 'Mentorship session updated.');
 }
+
+export async function createMentorshipReview(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const userId = req.user!.userId;
+  const { rating, feedback } = req.body;
+
+  const session = await prisma.mentorshipSession.findUnique({
+    where: { id },
+    include: {
+      request: {
+        include: { mentor: true }
+      }
+    }
+  });
+
+  if (!session) {
+    sendError(res, 'Mentorship session not found.', 404, 'NOT_FOUND');
+    return;
+  }
+
+  if (session.request.menteeId !== userId) {
+    sendError(res, 'Only the mentee who participated in this session can submit a review.', 403, 'FORBIDDEN');
+    return;
+  }
+
+  const existingReview = await prisma.mentorshipReview.findFirst({
+    where: { sessionId: id }
+  });
+
+  if (existingReview) {
+    sendError(res, 'A review has already been submitted for this session.', 409, 'ALREADY_EXISTS');
+    return;
+  }
+
+  const mentorId = session.request.mentorId;
+  const review = await prisma.mentorshipReview.create({
+    data: {
+      mentorId,
+      menteeId: userId,
+      sessionId: id,
+      rating: Number(rating),
+      reviewText: feedback || 'Great mentorship session.'
+    }
+  });
+
+  const allReviews = await prisma.mentorshipReview.findMany({
+    where: { mentorId },
+    select: { rating: true }
+  });
+
+  const reviewsCount = allReviews.length;
+  const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / reviewsCount;
+
+  await prisma.mentorProfile.update({
+    where: { id: mentorId },
+    data: {
+      rating: parseFloat(avgRating.toFixed(2)),
+      reviewsCount
+    }
+  });
+
+  sendSuccess(res, review, 'Mentorship review submitted successfully.', 201);
+}
+

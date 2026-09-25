@@ -19,12 +19,21 @@ import alumniRoutes from './alumni.routes';
 import careerRoutes from './career.routes';
 import aspirantRoutes from './aspirant.routes';
 import paymentRoutes from './payment.routes';
+import profileRoutes from './profile.routes';
+import projectRoutes from './project.routes';
+import studentRoutes from './student.routes';
+import { checkDatabaseHealth } from '../services/prisma.service';
 
 const router = Router();
 
 // Health check endpoint (Public)
-router.get('/health', (req, res) => {
-  res.status(200).json({ status: 'HEALTHY', timestamp: new Date().toISOString() });
+router.get('/health', async (req, res) => {
+  const dbStatus = await checkDatabaseHealth();
+  res.status(200).json({
+    status: 'HEALTHY',
+    database: dbStatus,
+    timestamp: new Date().toISOString()
+  });
 });
 
 router.use('/auth', authRoutes);
@@ -47,5 +56,8 @@ router.use('/', alumniRoutes);
 router.use('/', careerRoutes);
 router.use('/', aspirantRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/profile', profileRoutes);
+router.use('/projects', projectRoutes);
+router.use('/students', studentRoutes);
 
 export default router;

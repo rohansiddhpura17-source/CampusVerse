@@ -20,7 +20,9 @@ import {
   getSavedScholarships,
   getAspirantProfile,
   updateAspirantProfile,
-  updateAspirantProfileSchema
+  updateAspirantProfileSchema,
+  getAspirantRecommendations,
+  createAspirantRecommendation
 } from '../controllers/aspirant.controller';
 
 const router = Router();
@@ -50,5 +52,8 @@ router.delete('/scholarships/:id/save', requireAuth, unsaveScholarship);
 // 5. Aspirant Profile CRUD
 router.get('/aspirant/profile', requireAuth, getAspirantProfile);
 router.patch('/aspirant/profile', requireAuth, validateBody(updateAspirantProfileSchema), updateAspirantProfile);
+router.get('/aspirants/me', requireAuth, getAspirantProfile);
+router.get('/aspirants/recommendations', requireAuth, getAspirantRecommendations);
+router.post('/aspirants/recommendations', requireAuth, createAspirantRecommendation);
 
 export default router;

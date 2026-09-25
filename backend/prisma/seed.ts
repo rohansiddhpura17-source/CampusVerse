@@ -14,6 +14,35 @@ async function main() {
   console.log('Seeding development database with rich Student, Alumni & Aspirant datasets...');
 
   // Clean existing records in reverse dependency order
+  await prisma.moderationRecord.deleteMany();
+  await prisma.document.deleteMany();
+  await prisma.certification.deleteMany();
+  await prisma.achievement.deleteMany();
+  await prisma.projectTechnology.deleteMany();
+  await prisma.projectMember.deleteMany();
+  await prisma.projectLink.deleteMany();
+  await prisma.project.deleteMany();
+  await prisma.alumniAchievement.deleteMany();
+  await prisma.higherEducationRecord.deleteMany();
+  await prisma.employmentRecord.deleteMany();
+  await prisma.scholarshipApplication.deleteMany();
+  await prisma.entranceExam.deleteMany();
+  await prisma.collegeApplication.deleteMany();
+  await prisma.collegeRecommendation.deleteMany();
+  await prisma.collegePreference.deleteMany();
+  await prisma.mentorshipReview.deleteMany();
+  await prisma.notificationPreference.deleteMany();
+  await prisma.careerReadinessScore.deleteMany();
+  await prisma.aIChatMessage.deleteMany();
+  await prisma.aIChatSession.deleteMany();
+  await prisma.studentSkill.deleteMany();
+  await prisma.skill.deleteMany();
+  await prisma.grade.deleteMany();
+  await prisma.enrollment.deleteMany();
+  await prisma.academicRecord.deleteMany();
+  await prisma.subject.deleteMany();
+  await prisma.semester.deleteMany();
+  await prisma.department.deleteMany();
   await prisma.admissionPrediction.deleteMany();
   await prisma.savedScholarship.deleteMany();
   await prisma.savedCollege.deleteMany();
@@ -1070,6 +1099,171 @@ async function main() {
         isRead: false
       }
     ]
+  });
+
+  // 4. Academic System (Department, Semester, Subject, Enrollment, AcademicRecord)
+  const deptCSE = await prisma.department.create({
+    data: {
+      institutionId: inst1.id,
+      name: 'Department of Computer Science & Engineering',
+      code: 'CSE',
+      headOfDept: 'Prof. K. R. Raman'
+    }
+  });
+
+  const sem6 = await prisma.semester.create({
+    data: {
+      name: 'Spring 2026',
+      semesterNumber: 6,
+      academicYear: '2025-2026',
+      startDate: new Date('2026-01-05'),
+      endDate: new Date('2026-05-30')
+    }
+  });
+
+  const subjDist = await prisma.subject.create({
+    data: {
+      departmentId: deptCSE.id,
+      semesterId: sem6.id,
+      code: 'CS301',
+      name: 'Distributed Systems & Cloud Computing',
+      credits: 4,
+      type: 'CORE'
+    }
+  });
+
+  await prisma.enrollment.create({
+    data: {
+      studentId: studentUser.id,
+      subjectId: subjDist.id,
+      semesterId: sem6.id,
+      status: 'ACTIVE'
+    }
+  });
+
+  await prisma.academicRecord.create({
+    data: {
+      studentId: studentUser.id,
+      semesterId: sem6.id,
+      sgpa: 8.85,
+      cgpa: 8.75,
+      totalCredits: 22,
+      earnedCredits: 22
+    }
+  });
+
+  // 5. Skills & Student Skills
+  const skillKotlin = await prisma.skill.create({ data: { name: 'Kotlin', category: 'MOBILE' } });
+  const skillCompose = await prisma.skill.create({ data: { name: 'Jetpack Compose', category: 'MOBILE' } });
+  const skillTS = await prisma.skill.create({ data: { name: 'TypeScript', category: 'WEB' } });
+  const skillPostgres = await prisma.skill.create({ data: { name: 'PostgreSQL', category: 'DATABASE' } });
+
+  await prisma.studentSkill.createMany({
+    data: [
+      { studentId: studentUser.id, skillId: skillKotlin.id, proficiencyLevel: 'EXPERT', isVerified: true },
+      { studentId: studentUser.id, skillId: skillCompose.id, proficiencyLevel: 'EXPERT', isVerified: true },
+      { studentId: studentUser.id, skillId: skillTS.id, proficiencyLevel: 'ADVANCED', isVerified: true },
+      { studentId: studentUser.id, skillId: skillPostgres.id, proficiencyLevel: 'ADVANCED', isVerified: true }
+    ]
+  });
+
+  // 6. Projects & Team
+  const project1 = await prisma.project.create({
+    data: {
+      ownerId: studentUser.id,
+      title: 'CampusVerse Android & Web SuperApp',
+      description: 'Production campus platform combining real-time academic exchange, mentorship, and admissions intelligence.',
+      demoUrl: 'https://campusverse.edu',
+      githubUrl: 'https://github.com/rohansiddhpura17/CampusVerse',
+      isPublic: true,
+      technologies: {
+        create: [
+          { name: 'Kotlin' },
+          { name: 'Jetpack Compose' },
+          { name: 'TypeScript' },
+          { name: 'PostgreSQL' }
+        ]
+      },
+      members: {
+        create: [
+          { userId: studentUser.id, role: 'OWNER' },
+          { userId: alumniUser.id, role: 'MENTOR' }
+        ]
+      }
+    }
+  });
+
+  // 7. Certifications
+  await prisma.certification.create({
+    data: {
+      studentId: studentUser.id,
+      title: 'Associate Android Developer (AAD)',
+      issuingOrganization: 'Google Developers Certification',
+      credentialId: 'AAD-2025-CS-8921',
+      credentialUrl: 'https://developers.google.com/certification'
+    }
+  });
+
+  // 8. Mentorship Review
+  await prisma.mentorshipReview.create({
+    data: {
+      mentorId: alumniMentorProfile!.id,
+      menteeId: studentUser.id,
+      rating: 5.0,
+      reviewText: 'Priya provided incredible insight into Android engineering at scale and technical interview preparation!'
+    }
+  });
+
+  // 9. Notification Preferences
+  await prisma.notificationPreference.createMany({
+    data: [
+      { userId: studentUser.id, emailNotifications: true, pushNotifications: true },
+      { userId: alumniUser.id, emailNotifications: true, pushNotifications: true },
+      { userId: aspirantUser.id, emailNotifications: true, pushNotifications: true },
+      { userId: adminUser.id, emailNotifications: true, pushNotifications: true }
+    ]
+  });
+
+  // 10. AI Chat Session & Messages
+  const aiSession = await prisma.aIChatSession.create({
+    data: {
+      userId: studentUser.id,
+      title: 'Distributed Consensus & Raft Architecture',
+      agentType: 'STUDY_TUTOR',
+      messages: {
+        create: [
+          {
+            sender: 'USER',
+            content: 'How does leader election prevent split-vote scenarios in Raft consensus?'
+          },
+          {
+            sender: 'ASSISTANT',
+            content: 'Raft uses randomized election timeouts (typically 150-300ms) to ensure split votes are rare and resolved quickly.',
+            metadata: JSON.stringify({ tokensUsed: 120 })
+          }
+        ]
+      }
+    }
+  });
+
+  // 11. Aspirant Preferences & Recommendations
+  await prisma.collegePreference.create({
+    data: {
+      aspirantId: aspirantUser.id,
+      targetDegree: 'B.Tech',
+      targetMajor: 'Computer Science & AI',
+      preferredLocations: JSON.stringify(['Bangalore', 'Mumbai']),
+      maxBudget: 300000
+    }
+  });
+
+  await prisma.collegeRecommendation.create({
+    data: {
+      aspirantId: aspirantUser.id,
+      institutionId: inst1.id,
+      matchScore: 94.5,
+      matchReason: 'Exceptional match based on 98.4 percentile in JEE Main and interest in Computer Science.'
+    }
   });
 
   await seedProducts();

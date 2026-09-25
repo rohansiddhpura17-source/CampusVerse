@@ -122,6 +122,16 @@ async function provisionAdmin() {
       }
     });
 
+    // Upsert Relational SUPER_ADMIN Role
+    const superAdminRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
+    if (superAdminRole) {
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: user.id, roleId: superAdminRole.id } },
+        create: { userId: user.id, roleId: superAdminRole.id },
+        update: {},
+      });
+    }
+
     // Record audit log
     await prisma.auditLog.create({
       data: {

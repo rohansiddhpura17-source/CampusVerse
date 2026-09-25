@@ -16,3 +16,16 @@ process.on('beforeExit', async () => {
   await prisma.$disconnect();
 });
 
+export async function checkDatabaseHealth(): Promise<'connected' | 'disconnected'> {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2000))
+    ]);
+    return 'connected';
+  } catch {
+    return 'disconnected';
+  }
+}
+
+

@@ -276,7 +276,10 @@ export async function resetUserPassword(req: Request, res: Response): Promise<vo
   const invalidatedHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
   await prisma.user.update({
     where: { id },
-    data: { passwordHash: invalidatedHash }
+    data: {
+      passwordHash: invalidatedHash,
+      sessionVersion: { increment: 1 }
+    }
   });
 
   // 2. Invalidate any existing unused reset tokens for this user

@@ -23,8 +23,10 @@ model User {
   isEmailVerified   Boolean   @default(false)
   isAdminAuthorized Boolean   @default(false)
   isActive          Boolean   @default(true)
+  sessionVersion    Int       @default(1)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+
 
   // 1-to-1 relations
   profile           Profile?
@@ -76,7 +78,53 @@ model User {
   entitlements      Entitlement[]
   refundsProcessed  Refund[]              @relation("AdminRefundsProcessed")
 
+  // Projects & Portfolio
+  projects               Project[]
+  projectMemberships     ProjectMember[]
+  achievements           Achievement[]
+  certifications         Certification[]
+
+  // Student academic records & skills
+  enrollments            Enrollment[]
+  academicRecords        AcademicRecord[]
+  studentSkills          StudentSkill[]
+
+  // Aspirant extensions
+  collegePreferences     CollegePreference?
+  collegeRecommendations CollegeRecommendation[]
+  collegeApplications    CollegeApplication[]
+
+  // Scholarship applications
+  scholarshipApplications ScholarshipApplication[]
+
+  // Alumni career records
+  employmentRecords      EmploymentRecord[]
+  higherEducationRecords HigherEducationRecord[]
+  alumniAchievements     AlumniAchievement[]
+
+  // Mentorship reviews
+  mentorshipReviewsGiven MentorshipReview[]      @relation("ReviewerMentee")
+
+  // Communication & Settings
+  notificationPreference NotificationPreference?
+
+  // AI Chat & Scoring
+  aiChatSessions         AIChatSession[]
+  careerReadinessScores  CareerReadinessScore[]
+
+  // Documents
+  documents              Document[]
+
+  // Moderation
+  moderatorActions       ModerationRecord[]      @relation("ModeratorActions")
+
+  // Granular RBAC
+  userRoles              UserRole[]
+  assignedRoles          UserRole[]              @relation("RoleAssigner")
+  adminSessions          AdminSession[]
+
   @@index([email])
+
   @@index([role])
 }
 
@@ -169,6 +217,98 @@ model AdminProfile {
   updatedAt   DateTime @updatedAt
 }
 
+// -----------------------------------------------------------------------------
+// 1B. GRANULAR RBAC & PERMISSIONS
+// -----------------------------------------------------------------------------
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique // SUPER_ADMIN, ADMIN, MODERATOR, CONTENT_MANAGER, SUPPORT_ADMIN, ANALYTICS_ADMIN
+  description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  userRoles   UserRole[]
+  permissions RolePermission[]
+
+  @@index([name])
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique // e.g. users.read, users.suspend, colleges.create, etc.
+  module      String           // USERS, STUDENTS, ASPIRANTS, ALUMNI, COLLEGES, COURSES, SCHOLARSHIPS, PROJECTS, EVENTS, MODERATION, ANALYTICS, AUDIT, SETTINGS
+  description String?
+  createdAt   DateTime         @default(now())
+
+  roles       RolePermission[]
+
+  @@index([name])
+  @@index([module])
+}
+
+model UserRole {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId       String
+  role         Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedAt   DateTime  @default(now())
+  assignedById String?
+  assignedBy   User?     @relation("RoleAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  grantedAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  isEnabled   Boolean  @default(false)
+  targetRoles String?  // JSON array or comma-separated list of roles
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}
+
+model AdminSession {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenId       String    @unique
+  deviceName    String?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  lastActiveAt  DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+
+  @@index([userId])
+  @@index([tokenId])
+  @@index([expiresAt])
+}
+
+
 model Verification {
   id              String    @id @default(uuid())
   userId          String
@@ -218,6 +358,9 @@ model Institution {
   programs       CollegeProgram[]
   savedByUsers   SavedCollege[]
   predictions    AdmissionPrediction[]
+  departments    Department[]
+  collegeRecommendations CollegeRecommendation[]
+  collegeApplications    CollegeApplication[]
 
   @@index([code])
   @@index([country])
@@ -472,6 +615,7 @@ model MentorProfile {
   updatedAt          DateTime            @updatedAt
 
   requests           MentorshipRequest[]
+  reviews            MentorshipReview[]
 
   @@index([userId])
   @@index([company])
@@ -948,6 +1092,7 @@ model Scholarship {
   updatedAt      DateTime           @updatedAt
 
   savedByUsers   SavedScholarship[]
+  applications   ScholarshipApplication[]
 
   @@index([category])
   @@index([country])
@@ -1120,4 +1265,510 @@ model WebhookEvent {
   @@index([eventId])
   @@index([eventType])
 }
+
+// -----------------------------------------------------------------------------
+// 16. STUDENT ACADEMICS, ENROLLMENTS & SKILLS
+// -----------------------------------------------------------------------------
+
+model Department {
+  id            String       @id @default(uuid())
+  institutionId String
+  institution   Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  code          String
+  name          String
+  description   String?
+  headOfDept    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  subjects      Subject[]
+
+  @@unique([institutionId, code])
+  @@index([institutionId])
+}
+
+model Semester {
+  id           String       @id @default(uuid())
+  number       Int
+  name         String       // e.g. "Fall 2026", "Semester 1"
+  academicYear String       // e.g. "2026-2027"
+  startDate    DateTime?
+  endDate      DateTime?
+  createdAt    DateTime     @default(now())
+
+  enrollments  Enrollment[]
+
+  @@unique([number, academicYear])
+  @@index([number])
+}
+
+model Subject {
+  id           String       @id @default(uuid())
+  departmentId String?
+  department   Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  code         String       @unique
+  name         String
+  credits      Int          @default(3)
+  syllabus     String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  enrollments  Enrollment[]
+
+  @@index([code])
+  @@index([departmentId])
+}
+
+model Enrollment {
+  id           String       @id @default(uuid())
+  studentId    String
+  student      User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId    String
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  semesterId   String?
+  semester     Semester?    @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  status       String       @default("ENROLLED") // ENROLLED, COMPLETED, DROPPED, AUDIT
+  gradePoints  Float?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  grades       Grade[]
+
+  @@unique([studentId, subjectId, semesterId])
+  @@index([studentId])
+  @@index([subjectId])
+  @@index([status])
+}
+
+model Grade {
+  id           String       @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  examType     String       // MIDTERM, FINAL, QUIZ, ASSIGNMENT, PRACTICAL
+  letterGrade  String?      // A+, A, B, etc.
+  marksObtained Float
+  maxMarks     Float        @default(100.0)
+  percentage   Float
+  remarks      String?
+  recordedAt   DateTime     @default(now())
+
+  @@index([enrollmentId])
+  @@index([examType])
+}
+
+model AcademicRecord {
+  id                String   @id @default(uuid())
+  studentId         String
+  student           User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  semesterNumber    Int
+  sgpa              Float
+  cgpa              Float
+  creditsAttempted  Int
+  creditsEarned     Int
+  academicStatus    String   @default("GOOD_STANDING") // GOOD_STANDING, PROBATION, DEAN_LIST
+  transcriptUrl     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([studentId, semesterNumber])
+  @@index([studentId])
+}
+
+model Skill {
+  id           String         @id @default(uuid())
+  name         String         @unique
+  category     String?        // TECHNICAL, SOFT_SKILL, DOMAIN, LANGUAGE
+  description  String?
+  createdAt    DateTime       @default(now())
+
+  studentSkills StudentSkill[]
+
+  @@index([name])
+  @@index([category])
+}
+
+model StudentSkill {
+  id                String   @id @default(uuid())
+  studentId         String
+  student           User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skillId           String
+  skill             Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  proficiencyLevel  String   @default("BEGINNER") // BEGINNER, INTERMEDIATE, ADVANCED, EXPERT
+  endorsementsCount Int      @default(0)
+  verified          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([studentId, skillId])
+  @@index([studentId])
+  @@index([skillId])
+}
+
+// -----------------------------------------------------------------------------
+// 17. ASPIRANT PREFERENCES, RECOMMENDATIONS & APPLICATIONS
+// -----------------------------------------------------------------------------
+
+model CollegePreference {
+  id                 String   @id @default(uuid())
+  aspirantId         String   @unique
+  aspirant           User     @relation(fields: [aspirantId], references: [id], onDelete: Cascade)
+  stream             String?  // ENGINEERING, MEDICAL, COMMERCE, ARTS, MANAGEMENT
+  preferredLocations String?  // JSON array of strings
+  maxBudget          String?  // e.g. "1500000"
+  targetDegree       String?  // B.TECH, MBBS, BBA
+  targetUniversities String?  // JSON array
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([aspirantId])
+}
+
+model CollegeRecommendation {
+  id            String      @id @default(uuid())
+  aspirantId    String
+  aspirant      User        @relation(fields: [aspirantId], references: [id], onDelete: Cascade)
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  matchScore    Float       // 0.0 - 100.0
+  reasoning     String
+  fitCategory   String      @default("BEST_FIT") // DREAM, TARGET, SAFETY, BEST_FIT
+  createdAt     DateTime    @default(now())
+
+  @@unique([aspirantId, institutionId])
+  @@index([aspirantId])
+  @@index([institutionId])
+}
+
+model CollegeApplication {
+  id              String      @id @default(uuid())
+  aspirantId      String
+  aspirant        User        @relation(fields: [aspirantId], references: [id], onDelete: Cascade)
+  institutionId   String
+  institution     Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  programName     String
+  degree          String      @default("B.TECH")
+  status          String      @default("SUBMITTED") // DRAFT, SUBMITTED, UNDER_REVIEW, ACCEPTED, REJECTED, WITHDRAWN
+  applicationFee  Float?
+  documentsUrl    String?
+  notes           String?
+  applicationDate DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([aspirantId])
+  @@index([institutionId])
+  @@index([status])
+}
+
+model EntranceExam {
+  id             String    @id @default(uuid())
+  name           String    @unique // JEE_MAIN, JEE_ADVANCED, NEET, SAT, GRE, CAT
+  code           String    @unique
+  conductingBody String?
+  examDate       DateTime?
+  maxScore       Float     @default(300.0)
+  description    String?
+  websiteUrl     String?
+  createdAt      DateTime  @default(now())
+
+  @@index([code])
+}
+
+// -----------------------------------------------------------------------------
+// 18. SCHOLARSHIP APPLICATIONS
+// -----------------------------------------------------------------------------
+
+model ScholarshipApplication {
+  id                 String      @id @default(uuid())
+  scholarshipId      String
+  scholarship        Scholarship @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+  applicantId        String
+  applicant          User        @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  status             String      @default("SUBMITTED") // SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED
+  statementOfPurpose String?
+  documentsUrl       String?
+  appliedAt          DateTime    @default(now())
+  reviewedAt         DateTime?
+  reviewNotes        String?
+  updatedAt          DateTime    @updatedAt
+
+  @@unique([scholarshipId, applicantId])
+  @@index([scholarshipId])
+  @@index([applicantId])
+  @@index([status])
+}
+
+// -----------------------------------------------------------------------------
+// 19. ALUMNI RECORDS & ACHIEVEMENTS
+// -----------------------------------------------------------------------------
+
+model EmploymentRecord {
+  id          String    @id @default(uuid())
+  alumniId    String
+  alumni      User      @relation(fields: [alumniId], references: [id], onDelete: Cascade)
+  companyName String
+  designation String
+  department  String?
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  isCurrent   Boolean   @default(false)
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([alumniId])
+  @@index([companyName])
+}
+
+model HigherEducationRecord {
+  id              String    @id @default(uuid())
+  alumniId        String
+  alumni          User      @relation(fields: [alumniId], references: [id], onDelete: Cascade)
+  institutionName String
+  degree          String
+  fieldOfStudy    String
+  startYear       Int
+  graduationYear  Int?
+  gpa             Float?
+  createdAt       DateTime  @default(now())
+
+  @@index([alumniId])
+}
+
+model AlumniAchievement {
+  id          String    @id @default(uuid())
+  alumniId    String
+  alumni      User      @relation(fields: [alumniId], references: [id], onDelete: Cascade)
+  title       String
+  category    String    // ENTREPRENEURSHIP, RESEARCH, LEADERSHIP, COMMUNITY, PATENT
+  description String
+  dateAwarded DateTime?
+  proofUrl    String?
+  createdAt   DateTime  @default(now())
+
+  @@index([alumniId])
+  @@index([category])
+}
+
+// -----------------------------------------------------------------------------
+// 20. PROJECTS, PORTFOLIO & CERTIFICATIONS
+// -----------------------------------------------------------------------------
+
+model Project {
+  id              String               @id @default(uuid())
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  tagline         String?
+  description     String
+  category        String               @default("WEB_DEV") // WEB_DEV, MOBILE, AI_ML, IOT, CYBERSECURITY, BLOCKCHAIN, OTHER
+  thumbnailUrl    String?
+  demoUrl         String?
+  githubUrl       String?
+  isPublished     Boolean              @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  starsCount      Int                  @default(0)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  members         ProjectMember[]
+  technologies    ProjectTechnology[]
+  links           ProjectLink[]
+
+  @@index([userId])
+  @@index([category])
+  @@index([isPublished])
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name      String
+  role      String   // LEAD, FRONTEND, BACKEND, DESIGNER, RESEARCHER
+  joinedAt  DateTime @default(now())
+
+  @@index([projectId])
+  @@index([userId])
+}
+
+model ProjectTechnology {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String   // React, Node.js, Kotlin, PostgreSQL, PyTorch
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model ProjectLink {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label     String   // GitHub, Live Demo, Paper, Video
+  url       String
+
+  @@index([projectId])
+}
+
+model Achievement {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  description    String
+  issuer         String
+  issueDate      DateTime
+  certificateUrl String?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Certification {
+  id                  String    @id @default(uuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                String
+  issuingOrganization String
+  issueDate           DateTime
+  expiryDate          DateTime?
+  credentialId        String?
+  credentialUrl       String?
+  createdAt           DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// -----------------------------------------------------------------------------
+// 21. MENTORSHIP REVIEWS
+// -----------------------------------------------------------------------------
+
+model MentorshipReview {
+  id         String        @id @default(uuid())
+  mentorId   String
+  mentor     MentorProfile @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  menteeId   String
+  mentee     User          @relation("ReviewerMentee", fields: [menteeId], references: [id], onDelete: Cascade)
+  sessionId  String?
+  rating     Float         // 1.0 - 5.0
+  reviewText String
+  createdAt  DateTime      @default(now())
+
+  @@index([mentorId])
+  @@index([menteeId])
+}
+
+// -----------------------------------------------------------------------------
+// 22. NOTIFICATION PREFERENCES
+// -----------------------------------------------------------------------------
+
+model NotificationPreference {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailNotifications Boolean  @default(true)
+  pushNotifications  Boolean  @default(true)
+  inAppNotifications Boolean  @default(true)
+  eventAlerts        Boolean  @default(true)
+  mentorshipAlerts   Boolean  @default(true)
+  jobAlerts          Boolean  @default(true)
+  marketingAlerts    Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// -----------------------------------------------------------------------------
+// 23. AI SESSIONS, CHAT & READINESS
+// -----------------------------------------------------------------------------
+
+model AIChatSession {
+  id          String          @id @default(uuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String          @default("New AI Consultation")
+  agentType   String          @default("STUDY_TUTOR") // STUDY_TUTOR, CAREER_COUNSELOR, ADMISSIONS_ADVISOR
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  messages    AIChatMessage[]
+
+  @@index([userId])
+  @@index([agentType])
+}
+
+model AIChatMessage {
+  id        String        @id @default(uuid())
+  sessionId String
+  session   AIChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender    String        // USER, ASSISTANT, SYSTEM
+  content   String
+  metadata  String?       // JSON string
+  createdAt DateTime      @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model CareerReadinessScore {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  overallScore      Float    // 0.0 - 100.0
+  technicalScore    Float    // 0.0 - 100.0
+  softSkillsScore   Float    // 0.0 - 100.0
+  resumeScore       Float    // 0.0 - 100.0
+  breakdownJson     String?  // JSON string
+  calculatedAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([calculatedAt])
+}
+
+// -----------------------------------------------------------------------------
+// 24. DOCUMENTS & METADATA
+// -----------------------------------------------------------------------------
+
+model Document {
+  id                 String    @id @default(uuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title              String
+  documentType       String    // TRANSCRIPT, RESUME, CERTIFICATE, IDENTITY, OTHER
+  fileUrl            String
+  fileSize           Int       @default(0) // bytes
+  mimeType           String    @default("application/pdf")
+  verificationStatus String    @default("UNVERIFIED") // UNVERIFIED, PENDING, VERIFIED, REJECTED
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([documentType])
+}
+
+// -----------------------------------------------------------------------------
+// 25. ADMINISTRATION & MODERATION
+// -----------------------------------------------------------------------------
+
+model ModerationRecord {
+  id          String   @id @default(uuid())
+  targetType  String   // NOTE, MARKETPLACE_ITEM, POST, COMMENT, USER
+  targetId    String
+  moderatorId String
+  moderator   User     @relation("ModeratorActions", fields: [moderatorId], references: [id], onDelete: Cascade)
+  action      String   // APPROVED, REJECTED, FLAGGED, REMOVED, SUSPENDED
+  reason      String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([moderatorId])
+  @@index([targetType, targetId])
+  @@index([action])
+}
+
 

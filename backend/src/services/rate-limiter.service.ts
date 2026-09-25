@@ -151,8 +151,25 @@ export class RedisRateLimiterStore implements RateLimiterStore {
   }
 }
 
+/**
+ * Resolves the appropriate rate limiter store based on environment configuration.
+ * Automatically chooses RedisRateLimiterStore if REDIS_URL is provided,
+ * otherwise safely defaults to high-performance MemoryRateLimiterStore.
+ */
+export function resolveRateLimiterStore(redisUrl?: string): RateLimiterStore {
+  const url = redisUrl || process.env.REDIS_URL;
+  if (url && url.trim().length > 0) {
+    try {
+      return new RedisRateLimiterStore();
+    } catch {
+      return new MemoryRateLimiterStore();
+    }
+  }
+  return new MemoryRateLimiterStore();
+}
+
 // Global default store instance
-export const defaultRateLimiterStore: RateLimiterStore = new MemoryRateLimiterStore();
+export const defaultRateLimiterStore: RateLimiterStore = resolveRateLimiterStore();
 
 export interface RateLimiterOptions {
   windowMs: number;
@@ -250,3 +267,42 @@ export const otpRateLimiter = createRateLimiter({
     return email ? `email:${email}:ip:${ip}` : `ip:${ip}`;
   }
 });
+
+/**
+ * Standard Admin API Rate Limiter:
+ * 120 requests per minute per admin IP/user
+ */
+export const adminRateLimiter = createRateLimiter({
+  keyPrefix: 'admin-api',
+  windowMs: 60 * 1000,
+  maxRequests: 120,
+  errorMessage: 'Admin API request limit exceeded. Please wait a moment before trying again.',
+  errorCode: 'RATE_LIMIT_EXCEEDED',
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    if (userId) return `admin:${userId}`;
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.ip || 'unknown';
+    return `admin-ip:${ip}`;
+  }
+});
+
+/**
+ * High-Security Sensitive Action Rate Limiter:
+ * 20 requests per minute for privilege, flag, or system changes
+ */
+export const adminSensitiveRateLimiter = createRateLimiter({
+  keyPrefix: 'admin-sensitive',
+  windowMs: 60 * 1000,
+  maxRequests: 20,
+  errorMessage: 'Rate limit exceeded for sensitive administrative operations. Please wait a minute before retrying.',
+  errorCode: 'RATE_LIMIT_EXCEEDED',
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    if (userId) return `admin-sens:${userId}`;
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.ip || 'unknown';
+    return `admin-sens-ip:${ip}`;
+  }
+});
+

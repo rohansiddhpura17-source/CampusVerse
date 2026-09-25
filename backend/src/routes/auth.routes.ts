@@ -3,6 +3,7 @@ import {
   register,
   login,
   logout,
+  refreshToken,
   getCurrentUser,
   sendOtp,
   verifyOtp,
@@ -24,6 +25,7 @@ const router = Router();
 router.post('/register', validateBody(registerSchema), register);
 router.post('/login', validateBody(loginSchema), login);
 router.post('/logout', requireAuth, logout);
+router.post('/refresh', requireAuth, refreshToken);
 router.get('/me', requireAuth, getCurrentUser);
 
 // Production OTP Endpoints

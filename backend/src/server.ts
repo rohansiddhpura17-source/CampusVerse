@@ -6,8 +6,13 @@ const PORT = env.PORT;
 
 async function startServer() {
   try {
-    await prisma.$connect();
-    console.log('✅ Database connected successfully via Prisma');
+    try {
+      await prisma.$connect();
+      console.log('✅ Database connected successfully via Prisma');
+    } catch (dbErr: any) {
+      console.warn('⚠️ Database initial connection failed or database is currently paused:', dbErr?.message || dbErr);
+      console.warn('📡 Server will continue to start and serve requests once database resumes.');
+    }
 
     const server = app.listen(PORT, () => {
       console.log(`🚀 CampusVerse Backend API listening on port ${PORT}`);
@@ -17,7 +22,7 @@ async function startServer() {
     const shutdown = async () => {
       console.log('Shutting down server gracefully...');
       server.close(async () => {
-        await prisma.$disconnect();
+        await prisma.$disconnect().catch(() => {});
         console.log('Database disconnected. Process exited.');
         process.exit(0);
       });
@@ -30,6 +35,15 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+// Global process safeguards against unhandled errors
+process.on('unhandledRejection', (reason: any) => {
+  console.error('⚠️ [Server Safeguard] Unhandled Rejection:', reason?.message || reason);
+});
+
+process.on('uncaughtException', (err: any) => {
+  console.error('⚠️ [Server Safeguard] Uncaught Exception:', err?.message || err);
+});
 
 if (require.main === module) {
   startServer();

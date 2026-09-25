@@ -21,6 +21,15 @@ export const aiAspirantQuerySchema = z.object({
   mode: z.enum(['COLLEGE_RECOMMENDATION', 'SCHOLARSHIP_ADVICE', 'COURSE_SELECTION', 'CAREER_DIRECTION', 'EXAM_PREP']).default('COLLEGE_RECOMMENDATION')
 });
 
+export const createChatSessionSchema = z.object({
+  title: z.string().min(1).max(200).default('New Conversation'),
+  mode: z.enum(['STUDY', 'CAREER', 'ASPIRANT', 'GENERAL']).default('GENERAL')
+});
+
+export const sendChatMessageSchema = z.object({
+  message: z.string().min(1).max(4000)
+});
+
 export async function handleStudyAssistantQuery(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
   const { query, topic, mode } = req.body;
@@ -342,4 +351,174 @@ Provide concrete, realistic, and highly actionable admissions guidance, college 
     });
   }
 }
+
+export async function getChatSessions(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+
+  const sessions = await prisma.aIChatSession.findMany({
+    where: { userId },
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      _count: {
+        select: { messages: true }
+      }
+    }
+  });
+
+  sendSuccess(res, sessions, 'Chat sessions retrieved');
+}
+
+export async function getChatSessionById(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const userId = req.user!.userId;
+
+  const session = await prisma.aIChatSession.findUnique({
+    where: { id },
+    include: {
+      messages: {
+        orderBy: { createdAt: 'asc' }
+      }
+    }
+  });
+
+  if (!session) {
+    sendError(res, 'Chat session not found.', 404, 'NOT_FOUND');
+    return;
+  }
+
+  if (session.userId !== userId && req.user!.role !== 'ADMIN') {
+    sendError(res, 'Access denied to this chat session.', 403, 'FORBIDDEN');
+    return;
+  }
+
+  sendSuccess(res, session, 'Chat session retrieved');
+}
+
+export async function createChatSession(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { title, mode } = req.body;
+
+  const session = await prisma.aIChatSession.create({
+    data: {
+      userId,
+      title: title || 'New Conversation',
+      agentType: mode || 'STUDY_TUTOR'
+    }
+  });
+
+  sendSuccess(res, session, 'Chat session created', 201);
+}
+
+export async function sendChatMessage(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const userId = req.user!.userId;
+  const { message } = req.body;
+
+  const session = await prisma.aIChatSession.findUnique({
+    where: { id }
+  });
+
+  if (!session) {
+    sendError(res, 'Chat session not found.', 404, 'NOT_FOUND');
+    return;
+  }
+
+  if (session.userId !== userId && req.user!.role !== 'ADMIN') {
+    sendError(res, 'Access denied.', 403, 'FORBIDDEN');
+    return;
+  }
+
+  // 1. Record user message
+  await prisma.aIChatMessage.create({
+    data: {
+      sessionId: id,
+      sender: 'USER',
+      content: message
+    }
+  });
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
+  let replyText = '';
+  let tokensUsed = 0;
+
+  if (apiKey) {
+    try {
+      const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+      // Fetch recent messages for context
+      const history = await prisma.aIChatMessage.findMany({
+        where: { sessionId: id },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      });
+      const chronological = history.reverse();
+
+      const contents = chronological.map(m => ({
+        role: m.sender === 'USER' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      }));
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents })
+      });
+
+      if (response.ok) {
+        const data: any = await response.json();
+        replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
+        tokensUsed = data.usageMetadata?.totalTokenCount || 0;
+      } else {
+        replyText = 'AI assistant temporarily unavailable. Please retry in a moment.';
+      }
+    } catch {
+      replyText = 'AI assistant encountered a connection error. Please retry.';
+    }
+  } else {
+    replyText = `CampusVerse AI (${session.agentType} assistant): Thank you for your question "${message.substring(0, 50)}...". I am here to help you navigate campus life, academics, and career roadmaps!`;
+  }
+
+  // 2. Record AI message
+  const aiMessage = await prisma.aIChatMessage.create({
+    data: {
+      sessionId: id,
+      sender: 'ASSISTANT',
+      content: replyText,
+      metadata: tokensUsed ? JSON.stringify({ tokensUsed }) : null
+    }
+  });
+
+  // Touch session updatedAt
+  await prisma.aIChatSession.update({
+    where: { id },
+    data: { updatedAt: new Date() }
+  });
+
+  sendSuccess(res, aiMessage, 'Message processed', 201);
+}
+
+export async function deleteChatSession(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const userId = req.user!.userId;
+
+  const session = await prisma.aIChatSession.findUnique({
+    where: { id }
+  });
+
+  if (!session) {
+    sendError(res, 'Chat session not found.', 404, 'NOT_FOUND');
+    return;
+  }
+
+  if (session.userId !== userId && req.user!.role !== 'ADMIN') {
+    sendError(res, 'Access denied.', 403, 'FORBIDDEN');
+    return;
+  }
+
+  await prisma.aIChatSession.delete({
+    where: { id }
+  });
+
+  sendSuccess(res, { deleted: true }, 'Chat session deleted');
+}
+
 

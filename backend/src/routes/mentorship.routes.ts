@@ -6,9 +6,11 @@ import {
   respondMentorshipRequest,
   getMentorshipSessions,
   updateMentorshipSession,
+  createMentorshipReview,
   createMentorshipRequestSchema,
   respondMentorshipRequestSchema,
-  updateSessionSchema
+  updateSessionSchema,
+  createMentorshipReviewSchema
 } from '../controllers/mentorship.controller';
 import { requireAuth } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
@@ -24,5 +26,6 @@ router.patch('/mentorship/requests/:id', requireAuth, requireRole('ALUMNI', 'ADM
 
 router.get('/mentorship/sessions', requireAuth, getMentorshipSessions);
 router.patch('/mentorship/sessions/:id', requireAuth, validateBody(updateSessionSchema), updateMentorshipSession);
+router.post('/mentorship/sessions/:id/review', requireAuth, validateBody(createMentorshipReviewSchema), createMentorshipReview);
 
 export default router;

@@ -935,3 +935,56 @@ export async function updateAspirantProfile(req: Request, res: Response): Promis
     sendError(res, 'Failed to update aspirant profile', 500);
   }
 }
+
+export async function getAspirantRecommendations(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const recommendations = await prisma.collegeRecommendation.findMany({
+      where: { aspirantId: userId },
+      include: { institution: true },
+      orderBy: { matchScore: 'desc' }
+    });
+    sendSuccess(res, recommendations);
+  } catch (error: any) {
+    sendError(res, 'Failed to fetch recommendations', 500);
+  }
+}
+
+export async function createAspirantRecommendation(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const { institutionId, matchScore, reasoning, fitCategory } = req.body;
+
+    if (!institutionId) {
+      sendError(res, 'institutionId is required', 400);
+      return;
+    }
+
+    const recommendation = await prisma.collegeRecommendation.upsert({
+      where: {
+        aspirantId_institutionId: {
+          aspirantId: userId,
+          institutionId
+        }
+      },
+      create: {
+        aspirantId: userId,
+        institutionId,
+        matchScore: matchScore || 85.0,
+        reasoning: reasoning || 'Recommended based on academic profile and preferences.',
+        fitCategory: fitCategory || 'BEST_FIT'
+      },
+      update: {
+        matchScore: matchScore !== undefined ? matchScore : undefined,
+        reasoning: reasoning !== undefined ? reasoning : undefined,
+        fitCategory: fitCategory !== undefined ? fitCategory : undefined
+      },
+      include: { institution: true }
+    });
+
+    sendSuccess(res, recommendation, 'Recommendation recorded successfully', 201);
+  } catch (error: any) {
+    sendError(res, 'Failed to save recommendation', 500);
+  }
+}
+
