@@ -240,7 +240,7 @@ class EmailService {
         socket.write(line + '\r\n');
       };
 
-      socket.on('data', (chunk) => {
+      socket.on('data', (chunk: any) => {
         buffer += chunk.toString();
         const lines = buffer.split('\r\n');
         buffer = lines.pop() || '';
@@ -300,7 +300,7 @@ class EmailService {
         }
       });
 
-      socket.on('error', (err) => {
+      socket.on('error', (err: any) => {
         resolve({ success: false, error: `SMTP connection error: ${err.message}` });
       });
 
