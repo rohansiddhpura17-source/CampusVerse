@@ -191,32 +191,11 @@ async function seedRbac() {
     console.log(`✅ Configured role: ${role.name} (${permissionIdsToAssign.length} permissions)`);
   }
 
-  // 3. Assign existing ADMIN users the SUPER_ADMIN role
-  const adminUsers = await prisma.user.findMany({
-    where: { role: 'ADMIN' },
-    select: { id: true, email: true },
-  });
-
-  const superAdminRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
-
-  if (superAdminRole && adminUsers.length > 0) {
-    for (const admin of adminUsers) {
-      await prisma.userRole.upsert({
-        where: {
-          userId_roleId: {
-            userId: admin.id,
-            roleId: superAdminRole.id,
-          },
-        },
-        update: {},
-        create: {
-          userId: admin.id,
-          roleId: superAdminRole.id,
-        },
-      });
-      console.log(`✅ Assigned SUPER_ADMIN role to existing admin user: ${admin.email}`);
-    }
-  }
+  // 3. Explicit Provisioning Policy
+  // Note: SUPER_ADMIN is NOT assigned automatically to all legacy ADMIN users.
+  // Super Administrators must only be provisioned explicitly through
+  // the authorized provisioning workflow (backend/src/scripts/provision-admin.ts).
+  console.log('ℹ️ Skipping legacy ADMIN mass assignment: SUPER_ADMIN must be provisioned explicitly via provision-admin.ts');
 
   // 4. Seed initial Feature Flags
   const flags = [

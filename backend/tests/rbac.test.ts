@@ -54,16 +54,16 @@ describe('RBAC & Admin Authorization Security Suite', () => {
     });
 
     await prisma.user.upsert({
-      where: { email: 'admin@campusverse.edu' },
+      where: { email: 'campusverse.admin@gmail.com' },
       update: { passwordHash, isActive: true, isEmailVerified: true, isAdminAuthorized: true },
       create: {
-        email: 'admin@campusverse.edu',
+        email: 'campusverse.admin@gmail.com',
         passwordHash,
         role: 'ADMIN',
         isActive: true,
         isEmailVerified: true,
         isAdminAuthorized: true,
-        profile: { create: { fullName: 'Super Administrator' } }
+        profile: { create: { fullName: 'CampusVerse Super Administrator' } }
       }
     });
 
@@ -85,7 +85,7 @@ describe('RBAC & Admin Authorization Security Suite', () => {
 
     const adminLogin = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@campusverse.edu', password: 'Password123' });
+      .send({ email: 'campusverse.admin@gmail.com', password: 'Password123' });
     verifiedAdminToken = adminLogin.body.data.token;
 
     // 2. Register an unverified admin (fresh registration)
@@ -105,7 +105,21 @@ describe('RBAC & Admin Authorization Security Suite', () => {
   });
 
   afterAll(async () => {
-    // Keep connection pool alive for in-band test runner
+    // Restore canonical super admin password & settings
+    const defaultPasswordHash = await bcrypt.hash('CampusVerse@2026', 12);
+    await prisma.user.update({
+      where: { email: 'campusverse.admin@gmail.com' },
+      data: {
+        passwordHash: defaultPasswordHash,
+        isActive: true,
+        isAdminAuthorized: true
+      }
+    });
+
+    // Clean up temporary test unverified admin
+    await prisma.user.deleteMany({
+      where: { email: 'unverified_admin@campusverse.edu' }
+    });
   });
 
   describe('Non-Admin Role Rejection from Admin APIs (403 Forbidden)', () => {
