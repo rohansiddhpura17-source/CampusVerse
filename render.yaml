@@ -25,7 +25,7 @@ services:
       - key: OTP_FROM_NAME
         value: CampusVerse
       - key: GEMINI_MODEL
-        value: gemini-3.5-flash
+        value: gemini-1.5-flash
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL

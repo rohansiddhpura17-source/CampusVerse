@@ -68,7 +68,7 @@ export async function handleStudyAssistantQuery(req: Request, res: Response): Pr
   }
 
   try {
-    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+    const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
     console.log(`[AI Study Assistant] Outbound request to Gemini API (model: ${model}) for user: ${userId}`);
     const startTime = Date.now();
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -172,7 +172,7 @@ export async function handleCareerAssistantQuery(req: Request, res: Response): P
 
     const userContext = `User Role: ${user?.role || 'ALUMNI'}, Title: ${user?.profile?.alumniProfile?.currentDesignation || 'Software Engineer'}, Company: ${user?.profile?.alumniProfile?.currentCompany || 'Tech'}, Experience: ${user?.profile?.alumniProfile?.yearsOfExperience || 3} years, Skills: ${user?.skills.map((s) => s.skillName).join(', ')}`;
 
-    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+    const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
     console.log(`[AI Career Assistant] Outbound request to Gemini API (model: ${model}) for user: ${userId}`);
     const startTime = Date.now();
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -278,7 +278,7 @@ export async function handleAspirantRecommendationsQuery(req: Request, res: Resp
     const asp = user?.profile?.aspirantProfile;
     const userContext = `User Role: ASPIRANT, Target Degree: ${asp?.targetDegree || 'B.Tech'}, Target Major: ${asp?.targetMajor || 'Computer Science'}, Target Universities: ${asp?.targetUniversities || 'NIT, IIT, Stanford'}, High School: ${asp?.highSchool || 'High School'}, Scores: ${asp?.entranceExamScores || 'None'}`;
 
-    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+    const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
     console.log(`[AI Aspirant Advisor] Outbound request to Gemini API (model: ${model}) for user: ${userId}`);
     const startTime = Date.now();
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -443,7 +443,7 @@ export async function sendChatMessage(req: Request, res: Response): Promise<void
 
   if (apiKey) {
     try {
-      const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+      const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
       // Fetch recent messages for context
       const history = await prisma.aIChatMessage.findMany({
         where: { sessionId: id },
