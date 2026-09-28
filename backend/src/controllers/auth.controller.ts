@@ -8,6 +8,7 @@ import { sendSuccess, sendError } from '../utils/response';
 import { otpService } from '../services/otp.service';
 import { getUserPermissions } from '../middleware/rbac.middleware';
 import { logAudit } from '../services/audit.service';
+import { setSessionCookie, clearSessionCookie } from '../config/cookie';
 
 export const registerSchema = z.object({
   name: z.string().min(1, 'Full name is required').max(100),
@@ -51,6 +52,11 @@ export const resetPasswordSchema = z.object({
     .min(8, 'Password must be at least 8 characters long')
     .regex(/^(?=.*[A-Za-z])(?=.*\d)/, 'Password must contain both letters and numbers')
 });
+
+export function isWebClientRequest(req: Request): boolean {
+  const clientHeader = req.headers['x-campusverse-client'];
+  return typeof clientHeader === 'string' && clientHeader.trim().toLowerCase() === 'web';
+}
 
 export async function register(req: Request, res: Response): Promise<void> {
   try {
@@ -113,19 +119,30 @@ export async function register(req: Request, res: Response): Promise<void> {
       isAdminAuthorized: newUser.isAdminAuthorized
     });
 
+    // Set secure HttpOnly session cookie for web clients
+    setSessionCookie(res, token);
+
+    const isWeb = isWebClientRequest(req);
+    const responseData: any = {
+      user: {
+        userId: newUser.id,
+        email: newUser.email,
+        name: newUser.profile?.fullName || name,
+        role: newUser.role,
+        isEmailVerified: newUser.isEmailVerified,
+        isAdminAuthorized: newUser.isAdminAuthorized
+      }
+    };
+
+    // For non-web / legacy clients (e.g. Android app, CLI tools), include token in JSON response.
+    // For web clients, the JWT is omitted from the JSON payload to prevent client-side JavaScript access.
+    if (!isWeb) {
+      responseData.token = token;
+    }
+
     sendSuccess(
       res,
-      {
-        token,
-        user: {
-          userId: newUser.id,
-          email: newUser.email,
-          name: newUser.profile?.fullName || name,
-          role: newUser.role,
-          isEmailVerified: newUser.isEmailVerified,
-          isAdminAuthorized: newUser.isAdminAuthorized
-        }
-      },
+      responseData,
       'Account registered successfully. Verification code sent to email.',
       201
     );
@@ -216,21 +233,32 @@ export async function login(req: Request, res: Response): Promise<void> {
       }).catch((e) => console.error('Failed to log audit ADMIN_LOGIN:', e));
     }
 
+    // Set secure HttpOnly session cookie for web clients
+    setSessionCookie(res, token);
+
+    const isWeb = isWebClientRequest(req);
+    const responseData: any = {
+      user: {
+        userId: user.id,
+        email: user.email,
+        name: user.profile?.fullName || '',
+        role: user.role,
+        roles,
+        permissions,
+        isEmailVerified: user.isEmailVerified,
+        isAdminAuthorized: user.isAdminAuthorized
+      }
+    };
+
+    // For non-web / legacy clients (e.g. Android app, CLI tools), include token in JSON response.
+    // For web clients, the JWT is omitted from the JSON payload to prevent client-side JavaScript access.
+    if (!isWeb) {
+      responseData.token = token;
+    }
+
     sendSuccess(
       res,
-      {
-        token,
-        user: {
-          userId: user.id,
-          email: user.email,
-          name: user.profile?.fullName || '',
-          role: user.role,
-          roles,
-          permissions,
-          isEmailVerified: user.isEmailVerified,
-          isAdminAuthorized: user.isAdminAuthorized
-        }
-      },
+      responseData,
       'Login successful'
     );
   } catch (error: any) {
@@ -245,6 +273,9 @@ export async function login(req: Request, res: Response): Promise<void> {
 
 export async function logout(req: Request, res: Response): Promise<void> {
   try {
+    // Clear session cookie on web logout
+    clearSessionCookie(res);
+
     const rawToken = req.token || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.substring(7).trim() : null);
     if (rawToken) {
       revokeToken(rawToken);
@@ -264,6 +295,7 @@ export async function logout(req: Request, res: Response): Promise<void> {
     }
     sendSuccess(res, { loggedOut: true }, 'Successfully logged out.');
   } catch (error: any) {
+    clearSessionCookie(res);
     sendSuccess(res, { loggedOut: true }, 'Successfully logged out.');
   }
 }

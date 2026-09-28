@@ -16,6 +16,8 @@ declare global {
       token?: string;
       sessionId?: string;
       jti?: string;
+      authMethod?: 'cookie' | 'bearer';
+      cookies?: Record<string, string>;
     }
   }
 }

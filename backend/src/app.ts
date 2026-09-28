@@ -3,10 +3,12 @@ import cors from 'cors';
 import { env } from './config/env';
 import apiRouter from './routes';
 import { errorHandler } from './middleware/error.middleware';
+import { cookieParserMiddleware } from './middleware/cookie.middleware';
 
+// Active production web origin
+// Note: Future custom domains (e.g. campusverse.edu) are documented targets and will be enabled via CORS_ORIGIN once configured.
 const productionOrigins = [
-  'https://campusverse.edu',
-  'https://www.campusverse.edu'
+  'https://campusverse-website.onrender.com'
 ];
 
 const customOrigins = env.CORS_ORIGIN
@@ -44,6 +46,9 @@ export function createApp(): Application {
     },
     credentials: true
   }));
+
+  // Cookie Parser Middleware
+  app.use(cookieParserMiddleware);
   app.use(express.json({
     limit: '10mb',
     verify: (req: any, _res, buf) => {

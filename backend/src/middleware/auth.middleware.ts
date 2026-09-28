@@ -2,20 +2,52 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken, isTokenRevoked } from '../utils/jwt';
 import { sendError } from '../utils/response';
 import { prisma } from '../services/prisma.service';
+import { PROD_SESSION_COOKIE_NAME, DEV_SESSION_COOKIE_NAME } from '../config/cookie';
+import { isTrustedWebOrigin } from './csrf.middleware';
+import { env } from '../config/env';
 
 export async function requireAuth(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const authHeader = req.headers.authorization;
+  // 1. Resolve credentials:
+  // In production: Authenticate ONLY from '__Host-campusverse_session'.
+  // Do NOT accept 'campusverse_session' in production.
+  // In development: Accept 'campusverse_session' (or '__Host-campusverse_session' if present).
+  const isProduction = env.NODE_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const cookieToken = isProduction
+    ? req.cookies?.[PROD_SESSION_COOKIE_NAME]
+    : (req.cookies?.[DEV_SESSION_COOKIE_NAME] || req.cookies?.[PROD_SESSION_COOKIE_NAME]);
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const authHeader = req.headers.authorization;
+  const bearerToken =
+    authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.substring(7).trim()
+      : null;
+
+  const token = cookieToken || bearerToken;
+  const authMethod: 'cookie' | 'bearer' = cookieToken ? 'cookie' : 'bearer';
+
+  if (!token) {
     sendError(res, 'Authentication token missing or invalid format.', 401, 'UNAUTHORIZED');
     return;
   }
 
-  const token = authHeader.substring(7).trim();
+  // 2. CSRF Validation: For state-changing mutations authenticated via cookie
+  if (authMethod === 'cookie' && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const originHeader = (req.headers.origin as string) || (req.headers.referer as string);
+    if (!originHeader || !isTrustedWebOrigin(originHeader)) {
+      sendError(
+        res,
+        'CSRF check failed: invalid or untrusted Origin for cookie-authenticated request.',
+        403,
+        'CSRF_FORBIDDEN'
+      );
+      return;
+    }
+  }
+
   const payload = verifyToken(token);
 
   if (!payload) {
@@ -83,6 +115,7 @@ export async function requireAuth(
     jti: payload.jti,
   };
   req.token = token;
+  req.authMethod = authMethod;
   req.sessionId = sessionRecord?.id;
   req.jti = payload.jti;
 
