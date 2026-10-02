@@ -5,10 +5,11 @@ import apiRouter from './routes';
 import { errorHandler } from './middleware/error.middleware';
 import { cookieParserMiddleware } from './middleware/cookie.middleware';
 
-// Active production web origin
+// Active production web origins (Render + Vercel)
 // Note: Future custom domains (e.g. campusverse.edu) are documented targets and will be enabled via CORS_ORIGIN once configured.
 const productionOrigins = [
-  'https://campusverse-website.onrender.com'
+  'https://campusverse-website.onrender.com',
+  'https://campus-verse-website.vercel.app'
 ];
 
 const customOrigins = env.CORS_ORIGIN

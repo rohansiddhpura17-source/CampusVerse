@@ -2,10 +2,11 @@ import { Request, Response, NextFunction } from 'express';
 import { env } from '../config/env';
 import { sendError } from '../utils/response';
 
-// Active production web origin
+// Active production web origins (Render + Vercel)
 // Note: Future custom domains (e.g. campusverse.edu) are documented targets and will be enabled via CORS_ORIGIN once configured.
 const productionWebOrigins = new Set([
   'https://campusverse-website.onrender.com',
+  'https://campus-verse-website.vercel.app',
 ]);
 
 // Include any explicitly declared custom origins from environment
