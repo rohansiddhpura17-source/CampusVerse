@@ -141,6 +141,25 @@ class FakeAdminRepository : AdminRepository {
         return Result.success("TempPass123!")
     }
 
+    override suspend fun createUser(name: String, email: String, password: String, role: String): Result<AdminUserItem> {
+        val user = AdminUserItem(
+            id = "u_${System.currentTimeMillis()}",
+            email = email,
+            fullName = name,
+            role = role,
+            isActive = true,
+            isEmailVerified = true,
+            createdAt = "2026-08-28T12:00:00Z"
+        )
+        users.add(0, user)
+        return Result.success(user)
+    }
+
+    override suspend fun deleteUser(userId: String): Result<Boolean> {
+        users.removeAll { it.id == userId }
+        return Result.success(true)
+    }
+
     override suspend fun getVerifications(status: String?): Result<List<AdminVerificationItem>> {
         var filtered = verifications.toList()
         if (!status.isNullOrBlank() && status != "ALL") filtered = filtered.filter { it.status.equals(status, true) }

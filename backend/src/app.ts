@@ -9,7 +9,9 @@ import { cookieParserMiddleware } from './middleware/cookie.middleware';
 // Note: Future custom domains (e.g. campusverse.edu) are documented targets and will be enabled via CORS_ORIGIN once configured.
 const productionOrigins = [
   'https://campusverse-website.onrender.com',
-  'https://campus-verse-website.vercel.app'
+  'https://campus-verse-website.vercel.app',
+  'https://campusverse.edu',
+  'https://www.campusverse.edu'
 ];
 
 const customOrigins = env.CORS_ORIGIN
