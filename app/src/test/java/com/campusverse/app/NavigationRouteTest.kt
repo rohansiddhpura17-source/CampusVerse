@@ -23,6 +23,7 @@ class NavigationRouteTest {
         assertEquals("forgot_password", Screen.ForgotPassword.route)
         assertEquals("reset_password", Screen.ResetPassword.route)
         assertEquals("student_home", Screen.StudentHome.route)
+        assertEquals("student_question_bank", Screen.QuestionBank.route)
         assertEquals("aspirant_home", Screen.AspirantHome.route)
         assertEquals("alumni_home", Screen.AlumniHome.route)
         assertEquals("admin_login", Screen.AdminLogin.route)

@@ -76,6 +76,7 @@ import com.campusverse.app.ui.screens.student.library.LibraryScreen
 import com.campusverse.app.ui.screens.student.marketplace.MarketplaceScreen
 import com.campusverse.app.ui.screens.student.marketplace.MarketplaceViewModel
 import com.campusverse.app.ui.screens.student.notes.NotesScreen
+import com.campusverse.app.ui.screens.student.questionbank.QuestionBankScreen
 import com.campusverse.app.ui.screens.student.notes.NotesViewModel
 import com.campusverse.app.ui.screens.student.profile.StudentProfileScreen
 import com.campusverse.app.ui.screens.student.settings.StudentSettingsScreen
@@ -272,6 +273,7 @@ fun CampusVerseNavHost(
                     onNavigateToNotes = { navController.navigate(Screen.NotesHub.route) },
                     onNavigateToLibrary = { navController.navigate(Screen.Library.route) },
                     onNavigateToAiAssistant = { navController.navigate(Screen.AiStudyAssistant.route) },
+                    onNavigateToQuestionBank = { navController.navigate(Screen.QuestionBank.route) },
                     onNavigateToEvents = { navController.navigate(Screen.Events.route) },
                     onNavigateToCommunity = { navController.navigate(Screen.CommunityList.route) },
                     onNavigateToMarketplace = { navController.navigate(Screen.Marketplace.route) },
@@ -288,6 +290,10 @@ fun CampusVerseNavHost(
                 currentUser = currentUser,
                 onNavigateBack = { navController.popBackStack() }
             )
+        }
+
+        composable(Screen.QuestionBank.route) {
+            QuestionBankScreen(onNavigateBack = { navController.popBackStack() })
         }
 
         composable(Screen.NotesHub.route) {
