@@ -68,7 +68,7 @@ class LocalQuestionBankRepository : QuestionBankRepository {
             answerText = "Encapsulation bundles data and behavior in a class and controls access to internal state through a defined interface.",
             subject = "Programming", course = "Java Programming",
             unit = "Unit 1", topic = "Object-Oriented Programming", difficulty = QuestionDifficulty.EASY,
-            codeExample = "class Account {\\n    private int balance;\\n    public int getBalance() { return balance; }\\n}"
+            codeExample = "class Account {\n    private int balance;\n    public int getBalance() { return balance; }\n}"
         ),
         QuestionBankQuestion(
             id = "java-002",
