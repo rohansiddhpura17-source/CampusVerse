@@ -24,7 +24,7 @@ describe('Domain Operations Suite (Jobs, Mentorship, Marketplace, Safety)', () =
       }
     });
 
-    await prisma.user.upsert({
+    const alumniUser = await prisma.user.upsert({
       where: { email: 'alumni@campusverse.edu' },
       update: { passwordHash, isActive: true, isEmailVerified: true },
       create: {
@@ -34,6 +34,18 @@ describe('Domain Operations Suite (Jobs, Mentorship, Marketplace, Safety)', () =
         isActive: true,
         isEmailVerified: true,
         profile: { create: { fullName: 'Dr. Aisha Patel' } }
+      }
+    });
+
+    await prisma.mentorProfile.upsert({
+      where: { userId: alumniUser.id },
+      update: { expertise: 'Android, Kotlin, Architecture', isAcceptingMentees: true },
+      create: {
+        userId: alumniUser.id,
+        title: 'Senior Android Engineer',
+        company: 'Google',
+        expertise: 'Android, Kotlin, Architecture',
+        isAcceptingMentees: true
       }
     });
 

@@ -33,12 +33,15 @@ class CollegeExplorerViewModel(
     private var currentCountry: String? = null
     private var currentDegree: String? = null
     private var currentSort: String = "ranking"
+    var isSavedOnlyMode: Boolean = false
+        private set
 
     init {
         loadColleges()
     }
 
     fun loadColleges(showLoading: Boolean = true) {
+        isSavedOnlyMode = false
         viewModelScope.launch {
             if (showLoading && _uiState.value !is CollegeExplorerUiState.Success) {
                 _uiState.value = CollegeExplorerUiState.Loading
@@ -60,6 +63,23 @@ class CollegeExplorerViewModel(
                 if (_uiState.value !is CollegeExplorerUiState.Success) {
                     _uiState.value = CollegeExplorerUiState.Error(err.message ?: "Failed to load colleges")
                 }
+            }
+        }
+    }
+
+    fun loadSavedColleges() {
+        isSavedOnlyMode = true
+        viewModelScope.launch {
+            _uiState.value = CollegeExplorerUiState.Loading
+            repository.getSavedColleges().onSuccess { list ->
+                _uiState.value = CollegeExplorerUiState.Success(
+                    colleges = list,
+                    searchQuery = "",
+                    selectedCountry = null,
+                    selectedDegree = null
+                )
+            }.onFailure { err ->
+                _uiState.value = CollegeExplorerUiState.Error(err.message ?: "Failed to load saved colleges")
             }
         }
     }
@@ -95,7 +115,11 @@ class CollegeExplorerViewModel(
             } else {
                 repository.saveCollege(collegeId)
             }
-            loadColleges()
+            if (isSavedOnlyMode) {
+                loadSavedColleges()
+            } else {
+                loadColleges(showLoading = false)
+            }
         }
     }
 }

@@ -33,11 +33,16 @@ import java.net.URL
  * available and interactive during presentations or in low-connectivity environments.
  */
 class NetworkStudentRepository(
-    private val baseUrl: String = "http://10.0.2.2:4000/api/v1",
+    baseUrl: String = "",
     private val sessionManager: SessionManager? = null
 ) : StudentRepository {
 
+    private val configuredBaseUrl: String = baseUrl
+    private val baseUrl: String
+        get() = if (configuredBaseUrl.isNotBlank() && !configuredBaseUrl.contains("localhost") && !configuredBaseUrl.contains("127.0.0.1") && !configuredBaseUrl.contains("10.0.2.2")) configuredBaseUrl else com.campusverse.app.data.network.ApiConfig.BASE_URL
+
     companion object {
+        private const val AI_STUDY_READ_TIMEOUT_MS = 60000
         var instance: StudentRepository = NetworkStudentRepository()
     }
 
@@ -309,6 +314,8 @@ class NetworkStudentRepository(
     // -------------------------------------------------------------------------
     // 3. Library
     // -------------------------------------------------------------------------
+    private val savedLibraryResourceIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     override suspend fun getLibraryResources(search: String?, category: String?): Result<List<LibraryResource>> = withContext(Dispatchers.IO) {
         try {
             val url = buildString {
@@ -322,16 +329,18 @@ class NetworkStudentRepository(
             val list = mutableListOf<LibraryResource>()
             for (i in 0 until data.length()) {
                 val item = data.getJSONObject(i)
+                val id = item.getString("id")
                 list.add(
                     LibraryResource(
-                        id = item.getString("id"),
+                        id = id,
                         title = item.getString("title"),
                         author = item.getString("author"),
                         isbn = item.optNullableString("isbn"),
                         category = item.optString("category", "PDF"),
                         location = item.optString("location", "Central Library"),
                         totalCopies = item.optInt("totalCopies", 1),
-                        availableCopies = item.optInt("availableCopies", 1)
+                        availableCopies = item.optInt("availableCopies", 1),
+                        isBookmarked = savedLibraryResourceIds.contains(id)
                     )
                 )
             }
@@ -355,13 +364,25 @@ class NetworkStudentRepository(
                     category = item.optString("category", "PDF"),
                     location = item.optString("location", "Central Library"),
                     totalCopies = item.optInt("totalCopies", 1),
-                    availableCopies = item.optInt("availableCopies", 1)
+                    availableCopies = item.optInt("availableCopies", 1),
+                    isBookmarked = savedLibraryResourceIds.contains(item.getString("id"))
                 )
             )
         } catch (e: Exception) {
             val item = getFallbackLibraryResources().firstOrNull { it.id == id } ?: getFallbackLibraryResources().first()
             Result.success(item)
         }
+    }
+
+    override suspend fun toggleBookmarkResource(id: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val isNowSaved = if (savedLibraryResourceIds.contains(id)) {
+            savedLibraryResourceIds.remove(id)
+            false
+        } else {
+            savedLibraryResourceIds.add(id)
+            true
+        }
+        Result.success(isNowSaved)
     }
 
     // -------------------------------------------------------------------------
@@ -374,29 +395,55 @@ class NetworkStudentRepository(
                 put("mode", mode)
                 if (topic != null) put("topic", topic)
             }
-            val response = executeHttp("POST", "$baseUrl/ai/study-assistant", payload.toString(), getToken())
-            val json = JSONObject(response)
-            val data = json.getJSONObject("data")
-            val topicsArr = data.optJSONArray("suggestedTopics")
-            val suggestions = mutableListOf<String>()
-            if (topicsArr != null) {
-                for (i in 0 until topicsArr.length()) {
-                    suggestions.add(topicsArr.getString(i))
-                }
-            }
-
-            Result.success(
-                AiStudyQueryResponse(
-                    available = data.optBoolean("available", false),
-                    query = data.optString("query", query),
-                    mode = data.optString("mode", mode),
-                    message = data.optNullableString("message"),
-                    response = data.optNullableString("response"),
-                    suggestedTopics = suggestions,
-                    timestamp = data.optNullableString("timestamp")
-                )
+            val response = executeHttp(
+                "POST",
+                "$baseUrl/ai/study-assistant",
+                payload.toString(),
+                getToken(),
+                readTimeoutMs = AI_STUDY_READ_TIMEOUT_MS
             )
+            val json = JSONObject(response)
+            val data = json.optJSONObject("data")
+            if (data != null) {
+                val topicsArr = data.optJSONArray("suggestedTopics")
+                val suggestions = mutableListOf<String>()
+                if (topicsArr != null) {
+                    for (i in 0 until topicsArr.length()) {
+                        suggestions.add(topicsArr.getString(i))
+                    }
+                }
+
+                Result.success(
+                    AiStudyQueryResponse(
+                        available = data.optBoolean("available", false),
+                        query = data.optString("query", query),
+                        mode = data.optString("mode", mode),
+                        message = data.optNullableString("message"),
+                        response = data.optNullableString("response"),
+                        suggestedTopics = suggestions,
+                        timestamp = data.optNullableString("timestamp")
+                    )
+                )
+            } else {
+                val errorObj = json.optJSONObject("error")
+                val errorMsg = errorObj?.optString("message") ?: json.optString("message", "AI Study Assistant backend returned an error.")
+                Result.success(
+                    AiStudyQueryResponse(
+                        available = false,
+                        query = query,
+                        mode = mode,
+                        message = errorMsg,
+                        suggestedTopics = listOf(
+                            "Data Structures & Algorithms",
+                            "Database Normalization",
+                            "Operating Systems Scheduling",
+                            "TCP/IP Networking"
+                        )
+                    )
+                )
+            }
         } catch (e: Exception) {
+            android.util.Log.e("NetworkStudentRepo", "askAiStudyAssistant failed: ${e.message}", e)
             Result.success(
                 AiStudyQueryResponse(
                     available = false,
@@ -503,6 +550,9 @@ class NetworkStudentRepository(
     // -------------------------------------------------------------------------
     // 6. Community
     // -------------------------------------------------------------------------
+    private val joinedCommunityIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val leftCommunityIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     override suspend fun getCommunities(search: String?): Result<List<CommunityItem>> = withContext(Dispatchers.IO) {
         try {
             val url = buildString {
@@ -515,15 +565,23 @@ class NetworkStudentRepository(
             val list = mutableListOf<CommunityItem>()
             for (i in 0 until data.length()) {
                 val c = data.getJSONObject(i)
+                val id = c.getString("id")
                 val counts = c.optJSONObject("_count")
+                val backendIsMember = c.optBoolean("isMember", false)
+                val isMember = when {
+                    joinedCommunityIds.contains(id) -> true
+                    leftCommunityIds.contains(id) -> false
+                    else -> backendIsMember
+                }
                 list.add(
                     CommunityItem(
-                        id = c.getString("id"),
+                        id = id,
                         name = c.getString("name"),
                         description = c.getString("description"),
                         coverImage = c.optNullableString("coverImage"),
                         memberCount = c.optInt("memberCount", counts?.optInt("members", 10) ?: 10),
-                        postsCount = counts?.optInt("posts", 5) ?: 5
+                        postsCount = counts?.optInt("posts", 5) ?: 5,
+                        isMember = isMember
                     )
                 )
             }
@@ -538,12 +596,20 @@ class NetworkStudentRepository(
             val response = executeHttp("GET", "$baseUrl/communities/$id", null, getToken())
             val json = JSONObject(response)
             val c = json.getJSONObject("data")
+            val commId = c.getString("id")
+            val backendIsMember = c.optBoolean("isMember", false)
+            val isMember = when {
+                joinedCommunityIds.contains(commId) -> true
+                leftCommunityIds.contains(commId) -> false
+                else -> backendIsMember
+            }
             val community = CommunityItem(
-                id = c.getString("id"),
+                id = commId,
                 name = c.getString("name"),
                 description = c.getString("description"),
                 coverImage = c.optNullableString("coverImage"),
-                memberCount = c.optInt("memberCount", 24)
+                memberCount = c.optInt("memberCount", 24),
+                isMember = isMember
             )
 
             val postsArr = c.optJSONArray("posts") ?: JSONArray()
@@ -600,18 +666,26 @@ class NetworkStudentRepository(
 
     override suspend fun joinCommunity(communityId: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
+            joinedCommunityIds.add(communityId)
+            leftCommunityIds.remove(communityId)
             executeHttp("POST", "$baseUrl/communities/$communityId/join", "{}", getToken())
             Result.success(true)
         } catch (e: Exception) {
+            joinedCommunityIds.add(communityId)
+            leftCommunityIds.remove(communityId)
             Result.success(true)
         }
     }
 
     override suspend fun leaveCommunity(communityId: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
+            leftCommunityIds.add(communityId)
+            joinedCommunityIds.remove(communityId)
             executeHttp("POST", "$baseUrl/communities/$communityId/leave", "{}", getToken())
             Result.success(true)
         } catch (e: Exception) {
+            leftCommunityIds.add(communityId)
+            joinedCommunityIds.remove(communityId)
             Result.success(true)
         }
     }
@@ -750,10 +824,19 @@ class NetworkStudentRepository(
                 put("targetId", targetId)
                 put("reason", reason)
             }
-            executeHttp("POST", "$baseUrl/reports", payload.toString(), getToken())
-            Result.success(true)
+            val response = executeHttp("POST", "$baseUrl/reports", payload.toString(), getToken())
+            if (response.isBlank()) {
+                return@withContext Result.failure(Exception("Network error submitting report."))
+            }
+            val json = JSONObject(response)
+            if (json.optBoolean("success", false) || json.has("data")) {
+                Result.success(true)
+            } else {
+                val err = json.optJSONObject("error")?.optString("message") ?: "Failed to submit report"
+                Result.failure(Exception(err))
+            }
         } catch (e: Exception) {
-            Result.success(true)
+            Result.failure(e)
         }
     }
 
@@ -1020,10 +1103,6 @@ class NetworkStudentRepository(
                 put("bio", data.bio ?: "")
                 put("location", data.location ?: "")
                 put("phone", data.phone ?: "")
-                put("degree", data.degree)
-                put("branch", data.branch)
-                put("semester", data.semester)
-                put("cgpa", data.cgpa)
                 put("skills", JSONArray(data.skills))
             }
             executeHttp("PATCH", "$baseUrl/users/profile/student", payload.toString(), getToken())
@@ -1036,14 +1115,20 @@ class NetworkStudentRepository(
     // -------------------------------------------------------------------------
     // HTTP Utility
     // -------------------------------------------------------------------------
-    private fun executeHttp(method: String, urlString: String, body: String?, token: String?): String {
+    private fun executeHttp(
+        method: String,
+        urlString: String,
+        body: String?,
+        token: String?,
+        readTimeoutMs: Int = com.campusverse.app.data.network.ApiConfig.READ_TIMEOUT_MS
+    ): String {
         var connection: HttpURLConnection? = null
         try {
             val url = URL(urlString)
             connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = method
-            connection.connectTimeout = 8000
-            connection.readTimeout = 8000
+            connection.connectTimeout = com.campusverse.app.data.network.ApiConfig.CONNECT_TIMEOUT_MS
+            connection.readTimeout = readTimeoutMs
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json")
             if (!token.isNullOrBlank()) {
@@ -1075,7 +1160,8 @@ class NetworkStudentRepository(
                     return sb.toString()
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("NetworkStudentRepo", "executeHttp error on $urlString: ${e.message}", e)
         } finally {
             connection?.disconnect()
         }
@@ -1151,7 +1237,8 @@ class NetworkStudentRepository(
             category = "EBOOK",
             location = "Digital Shelf / Section A",
             totalCopies = 5,
-            availableCopies = 3
+            availableCopies = 3,
+            isBookmarked = savedLibraryResourceIds.contains("lib_1")
         ),
         LibraryResource(
             id = "lib_2",
@@ -1161,7 +1248,8 @@ class NetworkStudentRepository(
             category = "PDF",
             location = "Central Library Floor 2",
             totalCopies = 3,
-            availableCopies = 1
+            availableCopies = 1,
+            isBookmarked = savedLibraryResourceIds.contains("lib_2")
         ),
         LibraryResource(
             id = "lib_3",
@@ -1170,7 +1258,8 @@ class NetworkStudentRepository(
             category = "VIDEO",
             location = "Online Campus Portal",
             totalCopies = 1,
-            availableCopies = 1
+            availableCopies = 1,
+            isBookmarked = savedLibraryResourceIds.contains("lib_3")
         )
     )
 

@@ -18,6 +18,7 @@ export const createCommentSchema = z.object({
 
 export async function getCommunities(req: Request, res: Response): Promise<void> {
   const search = req.query.search as string | undefined;
+  const userId = req.user?.userId;
 
   const where: any = {};
   if (search) {
@@ -38,17 +39,27 @@ export async function getCommunities(req: Request, res: Response): Promise<void>
           profile: { select: { fullName: true, avatarUrl: true } }
         }
       },
+      members: userId ? {
+        where: { userId },
+        select: { id: true }
+      } : false,
       _count: {
         select: { posts: true, members: true }
       }
     }
   });
 
-  sendSuccess(res, communities, 'Communities retrieved');
+  const formatted = communities.map(c => ({
+    ...c,
+    isMember: userId ? ((c as any).members && (c as any).members.length > 0) : false
+  }));
+
+  sendSuccess(res, formatted, 'Communities retrieved');
 }
 
 export async function getCommunityById(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
+  const userId = req.user?.userId;
 
   const community = await prisma.community.findUnique({
     where: { id },
@@ -60,6 +71,10 @@ export async function getCommunityById(req: Request, res: Response): Promise<voi
           profile: { select: { fullName: true, avatarUrl: true } }
         }
       },
+      members: userId ? {
+        where: { userId },
+        select: { id: true }
+      } : false,
       posts: {
         take: 30,
         orderBy: { createdAt: 'desc' },
@@ -97,7 +112,12 @@ export async function getCommunityById(req: Request, res: Response): Promise<voi
     return;
   }
 
-  sendSuccess(res, community);
+  const formatted = {
+    ...community,
+    isMember: userId ? ((community as any).members && (community as any).members.length > 0) : false
+  };
+
+  sendSuccess(res, formatted);
 }
 
 export async function joinCommunity(req: Request, res: Response): Promise<void> {

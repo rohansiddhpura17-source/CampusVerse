@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -134,10 +136,6 @@ fun StudentProfileScreen(
                 var fullName by remember(resolvedFullName) { mutableStateOf(resolvedFullName) }
                 var bio by remember(profile.bio) { mutableStateOf(profile.bio ?: "") }
                 var location by remember(profile.location) { mutableStateOf(profile.location ?: "") }
-                var degree by remember(profile.degree) { mutableStateOf(profile.degree) }
-                var branch by remember(profile.branch) { mutableStateOf(profile.branch) }
-                var semesterText by remember(profile.semester) { mutableStateOf(profile.semester.toString()) }
-                var cgpaText by remember(profile.cgpa) { mutableStateOf(profile.cgpa.toString()) }
                 var skillsText by remember(profile.skills) { mutableStateOf(profile.skills.joinToString(", ")) }
 
                 Column(
@@ -305,7 +303,7 @@ fun StudentProfileScreen(
                         }
 
                         Text(
-                            text = "Edit Academic Information",
+                            text = "Edit Profile Information",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -319,41 +317,49 @@ fun StudentProfileScreen(
                             singleLine = true
                         )
 
-                        OutlinedTextField(
-                            value = degree,
-                            onValueChange = { degree = it },
-                            label = { Text("Degree *") },
+                        // Read-Only Official Academic Record (Registrar Controlled)
+                        Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-
-                        OutlinedTextField(
-                            value = branch,
-                            onValueChange = { branch = it },
-                            label = { Text("Major / Department *") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedTextField(
-                                value = semesterText,
-                                onValueChange = { semesterText = it },
-                                label = { Text("Semester *") },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = cgpaText,
-                                onValueChange = { cgpaText = it },
-                                label = { Text("CGPA *") },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Lock,
+                                        contentDescription = "Official Record",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Official Academic Record (Verified)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    text = "${profile.degree} • ${profile.branch}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Semester ${profile.semester} • Cumulative CGPA ${profile.cgpa}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Academic records are managed by institution registrar and cannot be modified by students.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
                         }
 
                         OutlinedTextField(
@@ -386,17 +392,11 @@ fun StudentProfileScreen(
                         CampusVerseButton(
                             text = "Save Profile Changes",
                             onClick = {
-                                val sem = semesterText.toIntOrNull() ?: profile.semester
-                                val cg = cgpaText.toDoubleOrNull() ?: profile.cgpa
                                 val sList = skillsText.split(",").map { it.trim() }.filter { it.isNotBlank() }
                                 viewModel.saveProfile(
                                     fullName = fullName,
                                     bio = bio,
                                     location = location,
-                                    degree = degree,
-                                    branch = branch,
-                                    semester = sem,
-                                    cgpa = cg,
                                     skills = sList
                                 )
                             },

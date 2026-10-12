@@ -15,4 +15,10 @@ data class AuthSession(
     fun isExpired(currentEpochMillis: Long = System.currentTimeMillis()): Boolean {
         return currentEpochMillis >= expiresAtEpochMillis
     }
+
+    fun isJwtFormat(): Boolean {
+        if (token.isBlank() || token.startsWith("token_")) return false
+        val parts = token.split(".")
+        return parts.size == 3 && parts.all { it.isNotBlank() }
+    }
 }

@@ -1,6 +1,7 @@
 package com.campusverse.app.ui.screens.admin.finance
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -501,7 +502,12 @@ fun AdminRefundDialog(
             Text(text = "Issue Refund", fontWeight = FontWeight.Bold)
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
                     text = "Transaction: ${transaction.product?.title ?: "Platform Service"}",
                     style = MaterialTheme.typography.bodySmall,

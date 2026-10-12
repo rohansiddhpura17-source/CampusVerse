@@ -30,6 +30,7 @@ interface StudentRepository {
     // 3. Library
     suspend fun getLibraryResources(search: String? = null, category: String? = null): Result<List<LibraryResource>>
     suspend fun getLibraryResourceById(id: String): Result<LibraryResource>
+    suspend fun toggleBookmarkResource(id: String): Result<Boolean>
 
     // 4. AI Study Assistant
     suspend fun askAiStudyAssistant(query: String, mode: String = "EXPLAIN", topic: String? = null): Result<AiStudyQueryResponse>

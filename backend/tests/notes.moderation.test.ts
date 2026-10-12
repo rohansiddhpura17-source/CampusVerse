@@ -32,6 +32,15 @@ describe('Admin Authority & Notes Moderation Lifecycle Tests', () => {
     });
     adminUserId = adminUser.id;
 
+    const superAdminRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
+    if (superAdminRole) {
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: adminUser.id, roleId: superAdminRole.id } },
+        update: {},
+        create: { userId: adminUser.id, roleId: superAdminRole.id }
+      });
+    }
+
     // Ensure Student A exists
     const studentA = await prisma.user.upsert({
       where: { email: 'student_a@campusverse.edu' },

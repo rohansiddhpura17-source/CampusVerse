@@ -35,6 +35,8 @@ import {
   suspendUser,
   reactivateUser,
   patchUser,
+  createAdminUser,
+  deleteAdminUser,
   getAdminStudents,
   getAdminAspirants,
   getAdminAlumni,
@@ -49,6 +51,7 @@ import {
   resolveModeration,
   getAdminAuditLogs,
   getAdminAnalytics,
+  createUserSchema,
   suspendUserSchema,
   patchUserSchema,
   collegeSchema,
@@ -113,8 +116,10 @@ router.get('/analytics', requirePermission('analytics.read'), getAdminAnalytics)
 // 2. User Management & Cohorts
 // -----------------------------------------------------------------------------
 router.get('/users', requirePermission('users.read'), getAdminUsers);
+router.post('/users', requirePermission('users.update'), adminSensitiveRateLimiter, validateBody(createUserSchema), createAdminUser);
 router.get('/users/:id', requirePermission('users.read'), getUserById);
 router.patch('/users/:id', requirePermission('users.update'), adminSensitiveRateLimiter, validateBody(patchUserSchema), patchUser);
+router.delete('/users/:id', requirePermission('users.update'), adminSensitiveRateLimiter, deleteAdminUser);
 router.post('/users/:id/suspend', requirePermission('users.suspend'), adminSensitiveRateLimiter, validateBody(suspendUserSchema), suspendUser);
 router.post('/users/:id/reactivate', requirePermission('users.suspend'), adminSensitiveRateLimiter, reactivateUser);
 router.patch('/users/:id/status', requirePermission('users.update'), adminSensitiveRateLimiter, validateBody(updateUserStatusSchema), updateUserStatus);

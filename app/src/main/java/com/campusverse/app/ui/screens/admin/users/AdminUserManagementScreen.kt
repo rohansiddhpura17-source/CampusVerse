@@ -2,6 +2,7 @@ package com.campusverse.app.ui.screens.admin.users
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -270,7 +271,7 @@ private fun UserManagementContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(state.users) { user ->
+                items(state.users, key = { it.id }) { user ->
                     UserCard(
                         user = user,
                         onClick = { onSelectUser(user) },
@@ -293,7 +294,11 @@ private fun UserManagementContent(
                 }
             },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
                     Text(text = "Email: ${u.email}", style = MaterialTheme.typography.bodySmall)
                     Text(text = "Role: ${u.role}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                     Text(text = "Status: ${if (u.isActive) "Active" else "Suspended"}", color = if (u.isActive) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -439,7 +444,12 @@ private fun CreateUserDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create New User", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },

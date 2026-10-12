@@ -56,7 +56,8 @@ data class LibraryResource(
     val location: String? = null,
     val totalCopies: Int = 1,
     val availableCopies: Int = 1,
-    val fileUrl: String = "https://docs.campusverse.edu/library/sample_resource.pdf"
+    val fileUrl: String = "https://docs.campusverse.edu/library/sample_resource.pdf",
+    val isBookmarked: Boolean = false
 ) : Serializable
 
 data class CampusEvent(

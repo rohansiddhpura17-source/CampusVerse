@@ -159,6 +159,10 @@ fun CreateListingScreen(
                         onSuccess = {
                             isSubmitting = false
                             onNavigateBack()
+                        },
+                        onError = { err ->
+                            isSubmitting = false
+                            errorMessage = err
                         }
                     )
                 },

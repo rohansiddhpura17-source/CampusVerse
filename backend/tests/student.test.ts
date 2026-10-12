@@ -333,26 +333,34 @@ describe('Student Module Backend & RBAC Security Suite', () => {
   });
 
   describe('7. Student Profile Updates & Skills Persistence', () => {
-    it('student should update academic details and skills', async () => {
+    it('student should update profile details and skills', async () => {
       const res = await request(app)
         .patch('/api/v1/users/profile/student')
         .set('Authorization', `Bearer ${studentToken}`)
         .send({
           fullName: 'Aarav Sharma (Updated)',
           bio: 'Final year CS student passionate about distributed systems and Android development.',
-          degree: 'B.Tech',
-          branch: 'Computer Science and Engineering',
-          semester: 7,
-          cgpa: 9.15,
           skills: ['Kotlin', 'Jetpack Compose', 'TypeScript', 'Node.js', 'System Design']
         });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.profile.fullName).toBe('Aarav Sharma (Updated)');
-      expect(res.body.data.profile.studentProfile.cgpa).toBe(9.15);
-      expect(res.body.data.profile.studentProfile.semester).toBe(7);
       expect(res.body.data.skills.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('student should be rejected (403) when attempting to mutate academic records (CGPA, semester)', async () => {
+      const res = await request(app)
+        .patch('/api/v1/users/profile/student')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({
+          cgpa: 9.99,
+          semester: 8
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('FORBIDDEN_ACADEMIC_MUTATION');
     });
   });
 });

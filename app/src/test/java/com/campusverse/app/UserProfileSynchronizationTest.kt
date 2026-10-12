@@ -363,6 +363,7 @@ class UserProfileSynchronizationTest {
         override suspend fun reportNote(noteId: String, reason: String) = Result.success(true)
         override suspend fun getLibraryResources(search: String?, category: String?) = Result.success(emptyList<com.campusverse.app.data.model.LibraryResource>())
         override suspend fun getLibraryResourceById(id: String) = Result.failure<com.campusverse.app.data.model.LibraryResource>(Exception())
+        override suspend fun toggleBookmarkResource(id: String) = Result.success(true)
         override suspend fun askAiStudyAssistant(query: String, mode: String, topic: String?) = Result.failure<com.campusverse.app.data.model.AiStudyQueryResponse>(Exception())
         override suspend fun getEvents(search: String?, category: String?) = Result.success(emptyList<com.campusverse.app.data.model.CampusEvent>())
         override suspend fun getEventById(id: String) = Result.failure<com.campusverse.app.data.model.CampusEvent>(Exception())

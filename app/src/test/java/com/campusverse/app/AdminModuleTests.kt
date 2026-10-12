@@ -54,7 +54,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-class FakeAdminRepository : AdminRepository {
+open class FakeAdminRepository : AdminRepository {
     var metrics = AdminDashboardMetrics(
         totalUsers = 48,
         studentsCount = 28,

@@ -640,6 +640,7 @@ fun CampusVerseNavHost(
                     currentUser = currentUser,
                     onNavigateToCollegeExplorer = { navController.navigate(Screen.AspirantCollegeExplorer.route) },
                     onNavigateToCollegeComparison = { navController.navigate(Screen.AspirantCollegeComparison.route) },
+                    onNavigateToSavedColleges = { navController.navigate(Screen.AspirantSavedColleges.route) },
                     onNavigateToPredictor = { navController.navigate(Screen.AspirantPredictor.route) },
                     onNavigateToScholarships = { navController.navigate(Screen.AspirantScholarships.route) },
                     onNavigateToSavedScholarships = { navController.navigate(Screen.AspirantSavedScholarships.route) },
@@ -655,10 +656,18 @@ fun CampusVerseNavHost(
         composable(Screen.AspirantCollegeExplorer.route) {
             com.campusverse.app.ui.screens.aspirant.colleges.CollegeExplorerScreen(
                 onNavigateToComparison = { navController.navigate(Screen.AspirantCollegeComparison.route) },
+                onNavigateToSavedColleges = { navController.navigate(Screen.AspirantSavedColleges.route) },
                 onNavigateToHome = { navController.navigate(Screen.AspirantHome.route) },
                 onNavigateToScholarships = { navController.navigate(Screen.AspirantScholarships.route) },
                 onNavigateToPredictor = { navController.navigate(Screen.AspirantPredictor.route) },
                 onNavigateToProfile = { navController.navigate(Screen.AspirantProfile.route) }
+            )
+        }
+
+        composable(Screen.AspirantSavedColleges.route) {
+            com.campusverse.app.ui.screens.aspirant.colleges.SavedCollegesScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToCollegeDetails = { /* ModalBottomSheet or details handled in screen */ }
             )
         }
 

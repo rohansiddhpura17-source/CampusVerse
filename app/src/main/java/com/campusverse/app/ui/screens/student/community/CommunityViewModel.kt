@@ -86,12 +86,26 @@ class CommunityViewModel(
 
     fun toggleJoinCommunity(community: CommunityItem) {
         viewModelScope.launch {
+            val currState = _listState.value as? CommunityListUiState.Success
+            if (currState != null) {
+                val updated = currState.communities.map {
+                    if (it.id == community.id) {
+                        val newMember = !it.isMember
+                        it.copy(
+                            isMember = newMember,
+                            memberCount = if (newMember) it.memberCount + 1 else (it.memberCount - 1).coerceAtLeast(0)
+                        )
+                    } else it
+                }
+                _listState.value = currState.copy(communities = updated)
+            }
             if (community.isMember) {
                 repository.leaveCommunity(community.id)
             } else {
                 repository.joinCommunity(community.id)
             }
-            loadCommunities()
+            val currSearch = (_listState.value as? CommunityListUiState.Success)?.searchQuery
+            loadCommunities(search = currSearch?.ifBlank { null }, showLoading = false)
         }
     }
 

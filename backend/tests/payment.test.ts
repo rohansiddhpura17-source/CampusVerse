@@ -104,6 +104,15 @@ describe('Phase 3 — Monetization & Payment System Tests', () => {
     });
     adminUserId = adminUser.id;
 
+    const superAdminRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
+    if (superAdminRole) {
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: adminUser.id, roleId: superAdminRole.id } },
+        update: {},
+        create: { userId: adminUser.id, roleId: superAdminRole.id }
+      });
+    }
+
     // 2. Obtain JWT Auth Tokens
     const loginStudent = await request(app).post('/api/v1/auth/login').send({
       email: 'payment_student@campusverse.edu',
@@ -695,7 +704,8 @@ describe('Phase 3 — Monetization & Payment System Tests', () => {
         .send({
           amountPaise: 20000,
           reason: 'Partial goodwill refund for workshop downtime',
-          adminNotes: 'Approved by lead admin'
+          adminNotes: 'Approved by lead admin',
+          idempotencyKey: 'test_refund_idem_key_1'
         });
 
       expect(res.status).toBe(200);
@@ -708,6 +718,56 @@ describe('Phase 3 — Monetization & Payment System Tests', () => {
       // Entitlement remains ACTIVE on partial refund
       const ent = await prisma.entitlement.findUnique({ where: { id: entitlementId } });
       expect(ent?.status).toBe('ACTIVE');
+    });
+
+    it('IDEMPOTENCY: Replaying the refund request with identical idempotencyKey returns existing refund without deducting further', async () => {
+      const res = await request(app)
+        .post(`/api/v1/admin/finance/transactions/${refundableTxId}/refund`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          amountPaise: 20000,
+          reason: 'Partial goodwill refund for workshop downtime',
+          adminNotes: 'Approved by lead admin',
+          idempotencyKey: 'test_refund_idem_key_1'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toContain('idempotent');
+      expect(res.body.data.amountPaise).toBe(20000);
+      expect(res.body.data.remainingBalancePaise).toBe(29900); // Balance NOT deducted twice
+    });
+
+    it('INVALID REFUND AMOUNT: Negative or 0 paise receives 400 Bad Request', async () => {
+      const resZero = await request(app)
+        .post(`/api/v1/admin/finance/transactions/${refundableTxId}/refund`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          amountPaise: 0,
+          reason: 'Zero amount'
+        });
+      expect(resZero.status).toBe(400);
+
+      const resNegative = await request(app)
+        .post(`/api/v1/admin/finance/transactions/${refundableTxId}/refund`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          amountPaise: -500,
+          reason: 'Negative amount'
+        });
+      expect(resNegative.status).toBe(400);
+    });
+
+    it('NON-EXISTENT TRANSACTION: Returns 404 for unknown transaction id', async () => {
+      const res = await request(app)
+        .post('/api/v1/admin/finance/transactions/non_existent_tx_id_999/refund')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          amountPaise: 1000,
+          reason: 'Refund unknown tx'
+        });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('TRANSACTION_NOT_FOUND');
     });
 
     it('EXCESSIVE REFUND: Attempting to refund more than the remaining balance receives 400 Bad Request', async () => {

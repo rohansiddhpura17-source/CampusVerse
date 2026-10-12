@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -171,7 +173,7 @@ fun AdminEventsJobsScreen(
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(state.events) { event ->
+                            items(state.events, key = { it.id }) { event ->
                                 EventAdminCard(
                                     event = event,
                                     onApprove = { viewModel.moderateEvent(event.id, "APPROVE") },
@@ -186,7 +188,7 @@ fun AdminEventsJobsScreen(
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(state.jobs) { job ->
+                            items(state.jobs, key = { it.id }) { job ->
                                 JobAdminCard(
                                     job = job,
                                     onApprove = { viewModel.moderateJob(job.id, "APPROVE") },
@@ -239,7 +241,12 @@ private fun CreateEventDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create Campus Event", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -308,7 +315,12 @@ private fun CreateJobDialog(
         onDismissRequest = onDismiss,
         title = { Text("Post New Job Opportunity", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },

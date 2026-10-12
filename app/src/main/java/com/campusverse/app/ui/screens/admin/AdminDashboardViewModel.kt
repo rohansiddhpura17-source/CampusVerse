@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 sealed interface AdminDashboardUiState {
     object Loading : AdminDashboardUiState
     data class Success(val data: AdminDashboardData) : AdminDashboardUiState
-    data class Error(val message: String) : AdminDashboardUiState
+    data class Error(val message: String, val isAuthError: Boolean = false) : AdminDashboardUiState
 }
 
 class AdminDashboardViewModel(
@@ -36,7 +36,15 @@ class AdminDashboardViewModel(
                     _uiState.value = AdminDashboardUiState.Success(data)
                 }
                 .onFailure { err ->
-                    _uiState.value = AdminDashboardUiState.Error(err.message ?: "Failed to load admin metrics")
+                    val msg = err.message ?: "Failed to load admin metrics"
+                    val isAuth = msg.contains("401") ||
+                        msg.contains("INVALID_TOKEN", ignoreCase = true) ||
+                        msg.contains("TOKEN_EXPIRED", ignoreCase = true) ||
+                        msg.contains("UNAUTHORIZED", ignoreCase = true)
+                    _uiState.value = AdminDashboardUiState.Error(
+                        message = msg,
+                        isAuthError = isAuth
+                    )
                 }
         }
     }

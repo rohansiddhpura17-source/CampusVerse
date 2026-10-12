@@ -66,4 +66,18 @@ class LibraryViewModel(
         val currCat = currState?.selectedCategory ?: "ALL"
         loadLibrary(category = currCat, search = query.ifBlank { null }, showLoading = false)
     }
+
+    fun toggleBookmark(resourceId: String) {
+        viewModelScope.launch {
+            val currState = _uiState.value as? LibraryUiState.Success ?: return@launch
+            val result = repository.toggleBookmarkResource(resourceId)
+            if (result.isSuccess) {
+                val isNowBookmarked = result.getOrDefault(false)
+                val updated = currState.resources.map {
+                    if (it.id == resourceId) it.copy(isBookmarked = isNowBookmarked) else it
+                }
+                _uiState.value = currState.copy(resources = updated)
+            }
+        }
+    }
 }

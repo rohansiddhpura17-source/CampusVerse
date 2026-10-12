@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.FilterList
@@ -167,7 +168,17 @@ fun EventsScreen(
                                 Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
                             },
                             trailingIcon = {
-                                Icon(imageVector = Icons.Outlined.FilterList, contentDescription = "Filter")
+                                if (state.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { viewModel.searchEvents("") }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Clear search",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    Icon(imageVector = Icons.Outlined.FilterList, contentDescription = "Filter")
+                                }
                             },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)

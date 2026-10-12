@@ -45,9 +45,13 @@ import java.net.URL
  * pre-defined memory models, ensuring every button and feature remains interactive.
  */
 class NetworkAlumniRepository(
-    private val baseUrl: String = "http://10.0.2.2:4000/api/v1",
+    baseUrl: String = com.campusverse.app.data.network.ApiConfig.BASE_URL,
     private val sessionManager: SessionManager? = null
 ) : AlumniRepository {
+
+    private val explicitBaseUrl: String = baseUrl
+    val baseUrl: String
+        get() = if (explicitBaseUrl.isNotBlank() && !explicitBaseUrl.contains("localhost") && !explicitBaseUrl.contains("127.0.0.1") && !explicitBaseUrl.contains("10.0.2.2")) explicitBaseUrl else com.campusverse.app.data.network.ApiConfig.BASE_URL
 
     companion object {
         var instance: AlumniRepository = NetworkAlumniRepository()
@@ -309,7 +313,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackAlumniList())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackAlumniList())
         }
@@ -438,7 +442,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackAlumniList().take(1))
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackAlumniList().take(1))
         }
@@ -462,7 +466,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackNetworkActivities())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackNetworkActivities())
         }
@@ -511,7 +515,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackJobs())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackJobs())
         }
@@ -550,7 +554,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackJobs())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackJobs())
         }
@@ -640,7 +644,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackJobs().take(2))
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackJobs().take(2))
         }
@@ -719,7 +723,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackApplications())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackApplications())
         }
@@ -764,7 +768,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackCompanies())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackCompanies())
         }
@@ -837,7 +841,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackJobs().filter { it.companyId == companyId })
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackJobs().filter { it.companyId == companyId })
         }
@@ -878,7 +882,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackReferrals())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackReferrals())
         }
@@ -984,7 +988,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackMentors())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackMentors())
         }
@@ -1096,7 +1100,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackMentorshipRequests())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackMentorshipRequests())
         }
@@ -1142,7 +1146,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackMentorshipSessions())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackMentorshipSessions())
         }
@@ -1356,7 +1360,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackRoadmaps())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackRoadmaps())
         }
@@ -1459,7 +1463,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackSkills())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackSkills())
         }
@@ -1543,7 +1547,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackInterviews())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackInterviews())
         }
@@ -1704,7 +1708,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackConversations())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackConversations())
         }
@@ -1736,7 +1740,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackMessages(conversationId))
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackMessages(conversationId))
         }
@@ -1861,7 +1865,7 @@ class NetworkAlumniRepository(
                     )
                 )
             }
-            Result.success(if (list.isNotEmpty()) list else getFallbackNotifications())
+            Result.success(list)
         } catch (e: Exception) {
             Result.success(getFallbackNotifications())
         }
@@ -1975,8 +1979,8 @@ class NetworkAlumniRepository(
             val url = URL(urlString)
             connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = method
-            connection.connectTimeout = 8000
-            connection.readTimeout = 8000
+            connection.connectTimeout = com.campusverse.app.data.network.ApiConfig.CONNECT_TIMEOUT_MS
+            connection.readTimeout = com.campusverse.app.data.network.ApiConfig.READ_TIMEOUT_MS
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json")
             if (!token.isNullOrBlank()) {

@@ -56,8 +56,47 @@ class DataStoreSessionManager(
     }
 
     override suspend fun getSession(): AuthSession? {
-        val session = getSessionFlow().first()
-        if (session != null && !isSessionValid(session)) {
+        val preferences = dataStore.data
+            .catch { exception ->
+                if (exception is IOException) {
+                    emit(emptyPreferences())
+                } else {
+                    throw exception
+                }
+            }
+            .first()
+
+        val token = preferences[KEY_TOKEN] ?: return null
+        val userId = preferences[KEY_USER_ID] ?: run { clearSession(); return null }
+        val email = preferences[KEY_USER_EMAIL] ?: run { clearSession(); return null }
+        val name = preferences[KEY_USER_NAME] ?: run { clearSession(); return null }
+        val roleStr = preferences[KEY_USER_ROLE] ?: run { clearSession(); return null }
+        val role = try {
+            UserRole.valueOf(roleStr)
+        } catch (e: IllegalArgumentException) {
+            clearSession()
+            return null
+        }
+        val isEmailVerified = preferences[KEY_IS_EMAIL_VERIFIED] ?: false
+        val isAdminAuthorized = preferences[KEY_IS_ADMIN_AUTHORIZED] ?: false
+        val expiresAt = preferences[KEY_EXPIRES_AT] ?: run { clearSession(); return null }
+
+        val user = AuthenticatedUser(
+            userId = userId,
+            email = email,
+            name = name,
+            role = role,
+            isEmailVerified = isEmailVerified,
+            isAdminAuthorized = isAdminAuthorized
+        )
+
+        val session = AuthSession(
+            token = token,
+            user = user,
+            expiresAtEpochMillis = expiresAt
+        )
+
+        if (!isSessionValid(session)) {
             clearSession()
             return null
         }
@@ -158,6 +197,10 @@ class DataStoreSessionManager(
 
     override fun isSessionValid(session: AuthSession?): Boolean {
         if (session == null) return false
-        return !session.isExpired(timeProvider())
+        if (session.isExpired(timeProvider())) return false
+        if (session.token.isBlank()) return false
+        if (session.token.startsWith("token_")) return false
+        if (!session.token.contains(".")) return false
+        return true
     }
 }

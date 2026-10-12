@@ -23,6 +23,13 @@ class CampusVerseApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        try {
+            val validatedUrl = com.campusverse.app.data.network.ApiConfig.validateConfiguration()
+            android.util.Log.i("CampusVerseApp", "Initialized with canonical API base URL: $validatedUrl")
+        } catch (e: Exception) {
+            android.util.Log.e("CampusVerseApp", "Fatal API configuration validation error: ${e.message}", e)
+        }
+
         val sessionManager = DataStoreSessionManager(sessionDataStore)
         val accountStore = DataStoreAccountStore(accountsDataStore)
 

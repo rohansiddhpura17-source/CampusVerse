@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../services/prisma.service';
 import { logAudit } from '../services/audit.service';
 import { getUserPermissions } from '../middleware/rbac.middleware';
@@ -8,6 +9,13 @@ import { sendSuccess, sendError } from '../utils/response';
 // -----------------------------------------------------------------------------
 // Validation Schemas
 // -----------------------------------------------------------------------------
+
+export const createUserSchema = z.object({
+  fullName: z.string().min(2).max(100),
+  email: z.string().email(),
+  password: z.string().min(6),
+  role: z.enum(['STUDENT', 'ASPIRANT', 'ALUMNI', 'ADMIN']).default('STUDENT'),
+});
 
 export const suspendUserSchema = z.object({
   reason: z.string().min(3, 'Reason must be at least 3 characters').max(500),
@@ -158,6 +166,101 @@ export async function reactivateUser(req: Request, res: Response): Promise<void>
   });
 
   sendSuccess(res, updated, `User account ${user.email} reactivated successfully.`);
+}
+
+export async function createAdminUser(req: Request, res: Response): Promise<void> {
+  const adminId = req.user!.userId;
+  const { fullName, email, password, role } = req.body;
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (existing) {
+    sendError(res, 'User with this email already exists.', 409, 'USER_ALREADY_EXISTS');
+    return;
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(password, salt);
+
+  const newUser = await prisma.user.create({
+    data: {
+      email: normalizedEmail,
+      passwordHash,
+      role,
+      isEmailVerified: true,
+      isAdminAuthorized: role === 'ADMIN',
+      profile: {
+        create: {
+          fullName: fullName.trim()
+        }
+      }
+    },
+    include: {
+      profile: true
+    }
+  });
+
+  if (role === 'ADMIN') {
+    const adminRole = await prisma.role.findUnique({ where: { name: 'ADMIN' } });
+    if (adminRole) {
+      await prisma.userRole.create({
+        data: {
+          userId: newUser.id,
+          roleId: adminRole.id
+        }
+      }).catch(() => {});
+    }
+  }
+
+  await logAudit(adminId, 'ADMIN_CREATED_USER', 'USER', newUser.id, {
+    email: normalizedEmail,
+    role
+  });
+
+  const { passwordHash: _, ...safeUser } = newUser as any;
+  sendSuccess(res, safeUser, 'User account created successfully.', 201);
+}
+
+export async function deleteAdminUser(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const adminId = req.user!.userId;
+
+  if (id === adminId) {
+    sendError(res, 'Privilege Guard: Administrators cannot delete their own account.', 403, 'CANNOT_DELETE_SELF');
+    return;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+    include: {
+      userRoles: { include: { role: true } },
+      profile: { include: { adminProfile: true } }
+    }
+  });
+
+  if (!user) {
+    sendError(res, 'User not found.', 404, 'NOT_FOUND');
+    return;
+  }
+
+  const isTargetSuper = user.userRoles.some(ur => ur.role.name === 'SUPER_ADMIN') ||
+    user.profile?.adminProfile?.accessLevel === 'SUPERADMIN';
+  if (isTargetSuper) {
+    const activeSuperAdmins = await prisma.userRole.count({
+      where: {
+        role: { name: 'SUPER_ADMIN' },
+        user: { isActive: true }
+      }
+    });
+    if (activeSuperAdmins <= 1) {
+      sendError(res, 'Critical System Safeguard: Cannot delete the last active SUPER_ADMIN.', 403, 'CANNOT_DELETE_LAST_SUPER_ADMIN');
+      return;
+    }
+  }
+
+  await prisma.user.delete({ where: { id } });
+  await logAudit(adminId, 'ADMIN_DELETED_USER', 'USER', id, { email: user.email });
+  sendSuccess(res, { id, deleted: true }, `User ${user.email} deleted permanently.`);
 }
 
 export async function patchUser(req: Request, res: Response): Promise<void> {

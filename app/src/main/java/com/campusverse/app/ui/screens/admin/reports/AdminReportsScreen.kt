@@ -1,6 +1,7 @@
 package com.campusverse.app.ui.screens.admin.reports
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -214,7 +215,7 @@ private fun ReportsContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(state.reports) { report ->
+                items(state.reports, key = { it.id }) { report ->
                     ReportCard(
                         report = report,
                         onReviewClick = { onStartReview(report) }
@@ -233,7 +234,11 @@ private fun ReportsContent(
                 Text(text = "Resolve Report: ${rep.targetType.replace('_', ' ')}", fontWeight = FontWeight.Bold)
             },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
                     Text(text = "Reporter: ${rep.reporterName} (${rep.reporterEmail})", style = MaterialTheme.typography.bodySmall)
                     Text(text = "Reason: ${rep.reason}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(10.dp))
@@ -244,7 +249,7 @@ private fun ReportsContent(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        val actions = listOf("WARN", "REMOVE", "SUSPEND", "DISMISS", "RESOLVE")
+                        val actions = listOf("INVESTIGATE", "WARN", "REMOVE", "SUSPEND", "DISMISS", "RESOLVE")
                         actions.forEach { act ->
                             FilterChip(
                                 selected = selectedAction == act,
@@ -273,8 +278,13 @@ private fun ReportsContent(
             confirmButton = {
                 Button(
                     onClick = {
-                        val finalStatus = if (selectedAction == "DISMISS") "DISMISSED" else "RESOLVED"
-                        onResolve(rep.id, finalStatus, selectedAction, resolutionNotesText)
+                        val finalStatus = when (selectedAction) {
+                            "INVESTIGATE" -> "INVESTIGATING"
+                            "DISMISS" -> "DISMISSED"
+                            else -> "RESOLVED"
+                        }
+                        val actionTaken = if (selectedAction == "INVESTIGATE") "NONE" else selectedAction
+                        onResolve(rep.id, finalStatus, actionTaken, resolutionNotesText)
                         resolutionNotesText = ""
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)

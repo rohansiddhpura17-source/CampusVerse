@@ -32,9 +32,13 @@ import java.net.URL
  * uptime presentation experience.
  */
 class NetworkAspirantRepository(
-    private val baseUrl: String = "http://10.0.2.2:4000/api/v1",
+    baseUrl: String = com.campusverse.app.data.network.ApiConfig.BASE_URL,
     private val sessionManager: SessionManager? = null
 ) : AspirantRepository {
+
+    private val explicitBaseUrl: String = baseUrl
+    val baseUrl: String
+        get() = if (explicitBaseUrl.isNotBlank() && !explicitBaseUrl.contains("localhost") && !explicitBaseUrl.contains("127.0.0.1") && !explicitBaseUrl.contains("10.0.2.2")) explicitBaseUrl else com.campusverse.app.data.network.ApiConfig.BASE_URL
 
     companion object {
         var instance: AspirantRepository = NetworkAspirantRepository()
@@ -62,6 +66,33 @@ class NetworkAspirantRepository(
     // ==========================================
     // In-memory fallback mock dataset
     // ==========================================
+
+    private val fallbackNotifications: MutableList<AlumniNotificationItem> = mutableListOf(
+        AlumniNotificationItem(
+            id = "notif_1",
+            type = "SYSTEM",
+            title = "Admission Predictor Ready",
+            message = "Predict your admission chances for 2026/2027 admissions cycle across top universities.",
+            isRead = false,
+            createdAt = "2 hours ago"
+        ),
+        AlumniNotificationItem(
+            id = "notif_2",
+            type = "SCHOLARSHIP",
+            title = "Merit Scholarship Deadlines",
+            message = "Multiple merit-based scholarship applications closing soon. Review eligibility criteria.",
+            isRead = false,
+            createdAt = "1 day ago"
+        ),
+        AlumniNotificationItem(
+            id = "notif_3",
+            type = "COLLEGE",
+            title = "Saved College Updates",
+            message = "Stanford University and MIT admissions guidelines updated for international applicants.",
+            isRead = true,
+            createdAt = "3 days ago"
+        )
+    )
 
     private var fallbackProfile = AspirantProfileData(
         userId = "usr_aspirant_1",
@@ -95,7 +126,7 @@ class NetworkAspirantRepository(
                 CollegeProgramItem("prog_1", "B.Tech in Computer Science and Engineering", "B.TECH", "Computer Science", 4.0, "₹2,20,000 / year", 8.0, listOf("JEE_MAIN", "JEE_ADVANCED"), "2026-06-30"),
                 CollegeProgramItem("prog_2", "B.Tech in Artificial Intelligence & Data Science", "B.TECH", "Artificial Intelligence", 4.0, "₹2,40,000 / year", 8.5, listOf("JEE_MAIN"), "2026-06-30")
             ),
-            isSaved = true
+            isSaved = false
         ),
         CollegeItem(
             id = "inst_2",
@@ -115,7 +146,7 @@ class NetworkAspirantRepository(
                 CollegeProgramItem("prog_3", "B.Tech in Computer Science & Engineering", "B.TECH", "Computer Science", 4.0, "₹2,50,000 / year", 9.0, listOf("JEE_ADVANCED"), "2026-06-15"),
                 CollegeProgramItem("prog_4", "B.Tech in Electrical Engineering", "B.TECH", "Electrical Engineering", 4.0, "₹2,50,000 / year", 8.5, listOf("JEE_ADVANCED"), "2026-06-15")
             ),
-            isSaved = true
+            isSaved = false
         ),
         CollegeItem(
             id = "inst_3",
@@ -208,7 +239,7 @@ class NetworkAspirantRepository(
             applicationUrl = "https://scholarships.gov.in/stem-grant",
             category = "MERIT",
             country = "India",
-            isSaved = true
+            isSaved = false
         ),
         ScholarshipItem(
             id = "sch_2",
@@ -222,7 +253,7 @@ class NetworkAspirantRepository(
             applicationUrl = "https://tatatrusts.org/education-grants",
             category = "NEED_BASED",
             country = "India",
-            isSaved = true
+            isSaved = false
         ),
         ScholarshipItem(
             id = "sch_3",
@@ -319,8 +350,8 @@ class NetworkAspirantRepository(
             val url = URL(urlString)
             connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = method
-            connection.connectTimeout = 8000
-            connection.readTimeout = 8000
+            connection.connectTimeout = com.campusverse.app.data.network.ApiConfig.CONNECT_TIMEOUT_MS
+            connection.readTimeout = com.campusverse.app.data.network.ApiConfig.READ_TIMEOUT_MS
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json")
             if (!token.isNullOrBlank()) {
@@ -460,6 +491,26 @@ class NetworkAspirantRepository(
                 )
             }
 
+            val notifArray = data.optJSONArray("notifications")
+            val notifList = mutableListOf<AlumniNotificationItem>()
+            if (notifArray != null && notifArray.length() > 0) {
+                for (i in 0 until notifArray.length()) {
+                    val nObj = notifArray.getJSONObject(i)
+                    notifList.add(
+                        AlumniNotificationItem(
+                            id = nObj.optString("id", "notif_$i"),
+                            type = nObj.optString("type", "SYSTEM"),
+                            title = nObj.optString("title", "Notification"),
+                            message = nObj.optString("message", ""),
+                            isRead = nObj.optBoolean("isRead", false),
+                            createdAt = nObj.optString("createdAt", null)
+                        )
+                    )
+                }
+            } else {
+                notifList.addAll(fallbackNotifications)
+            }
+
             Result.success(
                 AspirantHomeSummary(
                     profile = profile,
@@ -468,9 +519,7 @@ class NetworkAspirantRepository(
                     recentPredictionsCount = data.optInt("recentPredictionsCount", 0),
                     recommendedColleges = recList,
                     recentPredictions = predList,
-                    notifications = listOf(
-                        AlumniNotificationItem("notif_1", "SYSTEM", "Admission Predictor Updated", "NIT Bangalore CSE prediction calculated at 94.5%", false)
-                    )
+                    notifications = notifList
                 )
             )
         } catch (e: Exception) {
@@ -483,9 +532,7 @@ class NetworkAspirantRepository(
                     recentPredictionsCount = fallbackPredictions.size,
                     recommendedColleges = fallbackColleges.take(4),
                     recentPredictions = fallbackPredictions,
-                    notifications = listOf(
-                        AlumniNotificationItem("notif_1", "SYSTEM", "Admission Predictor Updated", "NIT Bangalore CSE prediction calculated at 94.5%", false)
-                    )
+                    notifications = fallbackNotifications.toList()
                 )
             )
         }
@@ -607,29 +654,29 @@ class NetworkAspirantRepository(
     }
 
     override suspend fun saveCollege(collegeId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val idx = fallbackColleges.indexOfFirst { it.id == collegeId }
+        if (idx != -1) {
+            fallbackColleges[idx] = fallbackColleges[idx].copy(isSaved = true)
+        }
         try {
             val token = getToken()
             executePost("/colleges/$collegeId/save", JSONObject(), token)
             Result.success(true)
         } catch (e: Exception) {
-            val idx = fallbackColleges.indexOfFirst { it.id == collegeId }
-            if (idx != -1) {
-                fallbackColleges[idx] = fallbackColleges[idx].copy(isSaved = true)
-            }
             Result.success(true)
         }
     }
 
     override suspend fun unsaveCollege(collegeId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val idx = fallbackColleges.indexOfFirst { it.id == collegeId }
+        if (idx != -1) {
+            fallbackColleges[idx] = fallbackColleges[idx].copy(isSaved = false)
+        }
         try {
             val token = getToken()
             executeDelete("/colleges/$collegeId/save", token)
             Result.success(true)
         } catch (e: Exception) {
-            val idx = fallbackColleges.indexOfFirst { it.id == collegeId }
-            if (idx != -1) {
-                fallbackColleges[idx] = fallbackColleges[idx].copy(isSaved = false)
-            }
             Result.success(true)
         }
     }
@@ -906,29 +953,29 @@ class NetworkAspirantRepository(
     }
 
     override suspend fun saveScholarship(scholarshipId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val idx = fallbackScholarships.indexOfFirst { it.id == scholarshipId }
+        if (idx != -1) {
+            fallbackScholarships[idx] = fallbackScholarships[idx].copy(isSaved = true)
+        }
         try {
             val token = getToken()
             executePost("/scholarships/$scholarshipId/save", JSONObject(), token)
             Result.success(true)
         } catch (e: Exception) {
-            val idx = fallbackScholarships.indexOfFirst { it.id == scholarshipId }
-            if (idx != -1) {
-                fallbackScholarships[idx] = fallbackScholarships[idx].copy(isSaved = true)
-            }
             Result.success(true)
         }
     }
 
     override suspend fun unsaveScholarship(scholarshipId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val idx = fallbackScholarships.indexOfFirst { it.id == scholarshipId }
+        if (idx != -1) {
+            fallbackScholarships[idx] = fallbackScholarships[idx].copy(isSaved = false)
+        }
         try {
             val token = getToken()
             executeDelete("/scholarships/$scholarshipId/save", token)
             Result.success(true)
         } catch (e: Exception) {
-            val idx = fallbackScholarships.indexOfFirst { it.id == scholarshipId }
-            if (idx != -1) {
-                fallbackScholarships[idx] = fallbackScholarships[idx].copy(isSaved = false)
-            }
             Result.success(true)
         }
     }
@@ -1105,10 +1152,77 @@ class NetworkAspirantRepository(
                 entranceExamScores = scoresMap
             )
             fallbackProfile = updated
+            if (currentSession != null && updated.fullName.isNotBlank()) {
+                val updatedUser = currentSession.user.copy(name = updated.fullName)
+                sessionManager.saveSession(currentSession.copy(user = updatedUser))
+            }
             Result.success(updated)
         } catch (e: Exception) {
             // STANDALONE MODE: Instant update to local profile
             Result.success(profile)
+        }
+    }
+
+    override suspend fun getNotifications(): Result<List<AlumniNotificationItem>> = withContext(Dispatchers.IO) {
+        try {
+            val token = getToken()
+            if (token != null) {
+                val json = executeGet("/notifications", token)
+                val data = json.getJSONArray("data")
+                val list = mutableListOf<AlumniNotificationItem>()
+                for (i in 0 until data.length()) {
+                    val obj = data.getJSONObject(i)
+                    list.add(
+                        AlumniNotificationItem(
+                            id = obj.getString("id"),
+                            type = obj.optString("type", "SYSTEM"),
+                            title = obj.getString("title"),
+                            message = obj.getString("message"),
+                            isRead = obj.optBoolean("isRead", false),
+                            createdAt = obj.optString("createdAt", null)
+                        )
+                    )
+                }
+                return@withContext Result.success(list)
+            }
+            Result.success(fallbackNotifications.toList())
+        } catch (_: Exception) {
+            Result.success(fallbackNotifications.toList())
+        }
+    }
+
+    override suspend fun markNotificationAsRead(id: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val idx = fallbackNotifications.indexOfFirst { it.id == id }
+        if (idx != -1) {
+            fallbackNotifications[idx] = fallbackNotifications[idx].copy(isRead = true)
+        }
+        try {
+            val token = getToken()
+            if (token != null) {
+                executePatch("/notifications/$id/read", JSONObject(), token)
+            }
+            Result.success(true)
+        } catch (_: Exception) {
+            Result.success(true)
+        }
+    }
+
+    override suspend fun markAllNotificationsAsRead(): Result<Boolean> = withContext(Dispatchers.IO) {
+        for (i in fallbackNotifications.indices) {
+            fallbackNotifications[i] = fallbackNotifications[i].copy(isRead = true)
+        }
+        try {
+            val token = getToken()
+            if (token != null) {
+                fallbackNotifications.forEach { n ->
+                    try {
+                        executePatch("/notifications/${n.id}/read", JSONObject(), token)
+                    } catch (_: Exception) {}
+                }
+            }
+            Result.success(true)
+        } catch (_: Exception) {
+            Result.success(true)
         }
     }
 }

@@ -170,6 +170,7 @@ export async function getAspirantHomeSummary(req: Request, res: Response): Promi
         title: n.title,
         message: n.message,
         type: n.type,
+        isRead: n.isRead,
         createdAt: n.createdAt.toISOString()
       }))
     };

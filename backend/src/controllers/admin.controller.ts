@@ -34,7 +34,7 @@ export const resolveReportSchema = z.object({
 });
 
 export const moderationActionSchema = z.object({
-  action: z.enum(['APPROVE', 'REJECT', 'REMOVE', 'FLAG', 'SUSPEND', 'CLOSE']),
+  action: z.enum(['APPROVE', 'REJECT', 'REMOVE', 'FLAG', 'SUSPEND', 'CLOSE', 'CANCEL']),
   reason: z.string().optional()
 });
 
@@ -248,7 +248,16 @@ export async function updateUserStatus(req: Request, res: Response): Promise<voi
       email: true,
       role: true,
       isActive: true,
-      isEmailVerified: true
+      isEmailVerified: true,
+      createdAt: true,
+      profile: {
+        select: {
+          fullName: true,
+          avatarUrl: true,
+          headline: true,
+          location: true
+        }
+      }
     }
   });
 
@@ -400,7 +409,7 @@ export async function reviewVerification(req: Request, res: Response): Promise<v
     data: {
       status,
       reviewerId: adminId,
-      rejectionReason: status === 'REJECTED' ? rejectionReason : null,
+      rejectionReason: (status === 'REJECTED' || status === 'REQUEST_INFO') ? rejectionReason : null,
       reviewedAt: new Date()
     }
   });
@@ -417,9 +426,11 @@ export async function reviewVerification(req: Request, res: Response): Promise<v
     data: {
       userId: verification.userId,
       type: 'SYSTEM',
-      title: status === 'APPROVED' ? 'Verification Approved' : 'Verification Rejected',
+      title: status === 'APPROVED' ? 'Verification Approved' : (status === 'REQUEST_INFO' ? 'Verification: Additional Info Required' : 'Verification Rejected'),
       message: status === 'APPROVED'
         ? 'Your identity documents have been verified and approved.'
+        : status === 'REQUEST_INFO'
+        ? `Additional information requested: ${rejectionReason || 'Please upload a clearer document photo.'}`
         : `Your verification was rejected: ${rejectionReason || 'Please submit valid documents.'}`
     }
   }).catch(() => {});
@@ -508,12 +519,48 @@ export async function resolveReport(req: Request, res: Response): Promise<void> 
 
   // Apply moderation action if specified
   if (actionTaken === 'REMOVE') {
-    if (report.targetType === 'MARKETPLACE_ITEM') {
+    if (report.targetType === 'MARKETPLACE_ITEM' || report.targetType === 'MARKETPLACE') {
       await prisma.marketplaceItem.deleteMany({ where: { id: report.targetId } });
+    } else if (report.targetType === 'COMMUNITY_POST' || report.targetType === 'POST') {
+      await prisma.communityPost.deleteMany({ where: { id: report.targetId } });
+    } else if (report.targetType === 'COMMENT') {
+      await prisma.communityComment.deleteMany({ where: { id: report.targetId } });
+    } else if (report.targetType === 'NOTE') {
+      await prisma.note.deleteMany({ where: { id: report.targetId } });
     }
   } else if (actionTaken === 'SUSPEND') {
     if (report.targetType === 'USER') {
       await prisma.user.update({ where: { id: report.targetId }, data: { isActive: false } });
+    } else if (report.targetType === 'MARKETPLACE_ITEM' || report.targetType === 'MARKETPLACE') {
+      const item = await prisma.marketplaceItem.findUnique({ where: { id: report.targetId }, select: { sellerId: true } });
+      if (item?.sellerId) {
+        await prisma.user.update({ where: { id: item.sellerId }, data: { isActive: false } });
+      }
+    } else if (report.targetType === 'COMMUNITY_POST' || report.targetType === 'POST') {
+      const post = await prisma.communityPost.findUnique({ where: { id: report.targetId }, select: { authorId: true } });
+      if (post?.authorId) {
+        await prisma.user.update({ where: { id: post.authorId }, data: { isActive: false } });
+      }
+    }
+  } else if (actionTaken === 'WARN') {
+    let targetUserId = report.targetType === 'USER' ? report.targetId : null;
+    if (!targetUserId && (report.targetType === 'MARKETPLACE_ITEM' || report.targetType === 'MARKETPLACE')) {
+      const item = await prisma.marketplaceItem.findUnique({ where: { id: report.targetId }, select: { sellerId: true } });
+      targetUserId = item?.sellerId || null;
+    } else if (!targetUserId && (report.targetType === 'COMMUNITY_POST' || report.targetType === 'POST')) {
+      const post = await prisma.communityPost.findUnique({ where: { id: report.targetId }, select: { authorId: true } });
+      targetUserId = post?.authorId || null;
+    }
+    if (targetUserId) {
+      await prisma.notification.create({
+        data: {
+          userId: targetUserId,
+          type: 'SYSTEM',
+          title: 'Official Community Warning',
+          message: resolutionNotes || `A warning has been issued by moderation regarding report: ${report.reason}`,
+          isRead: false
+        }
+      }).catch(() => {});
     }
   }
 
@@ -794,7 +841,20 @@ export async function getAdminAnnouncements(req: Request, res: Response): Promis
     }
   });
 
-  sendSuccess(res, announcements, 'Admin announcements retrieved');
+  const userCountByRole = await prisma.user.groupBy({
+    by: ['role'],
+    _count: { id: true }
+  });
+  const totalUsers = userCountByRole.reduce((sum, r) => sum + r._count.id, 0);
+  const roleMap: Record<string, number> = {};
+  userCountByRole.forEach(r => { roleMap[r.role] = r._count.id; });
+
+  const enriched = announcements.map(a => {
+    const count = a.targetRole ? (roleMap[a.targetRole] || 0) : totalUsers;
+    return { ...a, deliveredCount: count };
+  });
+
+  sendSuccess(res, enriched, 'Admin announcements retrieved');
 }
 
 export async function createAnnouncement(req: Request, res: Response): Promise<void> {

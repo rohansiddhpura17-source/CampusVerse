@@ -22,7 +22,7 @@ describe('Phase 7 — Admin Module End-to-End & Security Tests', () => {
     const passwordHash = await bcrypt.hash('Password123', 10);
 
     // Ensure all demo users exist with standard password
-    await prisma.user.upsert({
+    const adminUser = await prisma.user.upsert({
       where: { email: 'admin@campusverse.edu' },
       update: { passwordHash, isActive: true, isEmailVerified: true, isAdminAuthorized: true },
       create: {
@@ -35,6 +35,15 @@ describe('Phase 7 — Admin Module End-to-End & Security Tests', () => {
         profile: { create: { fullName: 'Super Administrator' } }
       }
     });
+
+    const superAdminRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
+    if (superAdminRole) {
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: adminUser.id, roleId: superAdminRole.id } },
+        update: {},
+        create: { userId: adminUser.id, roleId: superAdminRole.id }
+      });
+    }
 
     await prisma.user.upsert({
       where: { email: 'student@campusverse.edu' },

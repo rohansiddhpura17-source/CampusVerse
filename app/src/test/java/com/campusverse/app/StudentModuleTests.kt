@@ -148,6 +148,15 @@ class FakeStudentRepository : StudentRepository {
         }
     )
     override suspend fun getLibraryResourceById(id: String): Result<LibraryResource> = Result.success(libraryList.first())
+    override suspend fun toggleBookmarkResource(id: String): Result<Boolean> {
+        val idx = libraryList.indexOfFirst { it.id == id }
+        if (idx != -1) {
+            val curr = libraryList[idx]
+            libraryList[idx] = curr.copy(isBookmarked = !curr.isBookmarked)
+            return Result.success(libraryList[idx].isBookmarked)
+        }
+        return Result.success(false)
+    }
     override suspend fun askAiStudyAssistant(query: String, mode: String, topic: String?): Result<AiStudyQueryResponse> = Result.success(
         AiStudyQueryResponse(true, query, mode, null, "Detailed explanation of $query.", listOf("DSA", "OS"))
     )
@@ -468,6 +477,16 @@ class StudentModuleTests {
         assertEquals("Aarav Sharma Updated", state.profile.fullName)
         assertEquals(7, state.profile.semester)
         assertEquals(9.2, state.profile.cgpa, 0.001)
+        assertEquals("Student profile saved successfully!", state.saveSuccessMessage)
+
+        // Registrar-Preserved Profile Save (Student only edits personal details)
+        viewModel.saveProfile("Aarav Sharma Final", "Bio Final", "Delhi", listOf("Kotlin", "Rust"))
+        advanceUntilIdle()
+        state = viewModel.uiState.value as StudentProfileUiState.Success
+        assertEquals("Aarav Sharma Final", state.profile.fullName)
+        assertEquals(7, state.profile.semester) // Preserved
+        assertEquals(9.2, state.profile.cgpa, 0.001) // Preserved
+        assertEquals(listOf("Kotlin", "Rust"), state.profile.skills)
         assertEquals("Student profile saved successfully!", state.saveSuccessMessage)
     }
 }

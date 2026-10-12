@@ -88,14 +88,22 @@ class MarketplaceViewModel(
         price: Double,
         category: String,
         condition: String,
-        onSuccess: () -> Unit
+        onError: ((String) -> Unit)? = null,
+        onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             try {
-                repository.createMarketplaceListing(title, description, price, category, condition)
-                loadMarketplace()
-                onSuccess()
-            } catch (_: Exception) {}
+                val result = repository.createMarketplaceListing(title, description, price, category, condition)
+                if (result.isSuccess) {
+                    loadMarketplace()
+                    onSuccess()
+                } else {
+                    val msg = result.exceptionOrNull()?.message ?: "Failed to publish listing. Please verify connection."
+                    onError?.invoke(msg)
+                }
+            } catch (e: Exception) {
+                onError?.invoke(e.message ?: "Failed to publish listing.")
+            }
         }
     }
 

@@ -31,11 +31,14 @@ import java.util.UUID
  * Performs real HTTP requests to the local/cloud backend while maintaining local fallback.
  */
 class NetworkAuthRepository(
-    private val baseUrl: String = com.campusverse.app.data.network.ApiConfig.BASE_URL,
+    private val baseUrl: String = "",
     private val sessionManager: SessionManager = InMemorySessionManager(),
     private val accountStore: AccountStore = InMemoryAccountStore(),
     private val sessionDurationMillis: Long = 7 * 24 * 60 * 60 * 1000L
 ) : AuthRepository {
+
+    private val effectiveBaseUrl: String
+        get() = if (baseUrl.isNotBlank() && !baseUrl.contains("localhost") && !baseUrl.contains("127.0.0.1") && !baseUrl.contains("10.0.2.2")) baseUrl else com.campusverse.app.data.network.ApiConfig.BASE_URL
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     override val authState: StateFlow<AuthState> = _authState.asStateFlow()
@@ -45,15 +48,29 @@ class NetworkAuthRepository(
         return try {
             val session = sessionManager.getSession()
             if (session != null && sessionManager.isSessionValid(session)) {
-                val remoteUser = fetchCurrentUserFromNetwork(session.token)
-                if (remoteUser != null) {
+                // If token is a mock token or not a JWT, purge immediately
+                if (session.token.startsWith("token_") || !session.token.contains(".")) {
+                    sessionManager.clearSession()
+                    _authState.value = AuthState.Unauthenticated
+                    return Result.success(null)
+                }
+
+                val (code, remoteUser) = fetchCurrentUserFromNetwork(session.token)
+                if (code in 200..299 && remoteUser != null) {
                     _authState.value = AuthState.Authenticated(remoteUser)
                     Result.success(remoteUser)
+                } else if (code == 401 || code == 403) {
+                    // Token rejected by server as invalid or expired - clear session immediately
+                    sessionManager.clearSession()
+                    _authState.value = AuthState.Unauthenticated
+                    Result.success(null)
                 } else {
+                    // Offline or temporary network failure; preserve cached user
                     _authState.value = AuthState.Authenticated(session.user)
                     Result.success(session.user)
                 }
             } else {
+                sessionManager.clearSession()
                 _authState.value = AuthState.Unauthenticated
                 Result.success(null)
             }
@@ -81,21 +98,28 @@ class NetworkAuthRepository(
                 put("password", password)
                 put("role", role.name)
             }
-            val response = executeHttpRequest("POST", "$baseUrl/auth/register", payload.toString(), null)
-            if (response.isNotBlank()) {
+            val (code, response) = executeHttpRequestWithCode("POST", "$effectiveBaseUrl/auth/register", payload.toString(), null)
+            if (code in 200..299 && response.isNotBlank()) {
                 val json = JSONObject(response)
                 if (json.optBoolean("success", false)) {
                     val data = json.optJSONObject("data")
                     val userObj = data?.optJSONObject("user") ?: data
-                    val token = data?.optString("token") ?: "token_${UUID.randomUUID()}"
+                    val token = data?.optString("token") ?: ""
+
+                    if (token.isBlank() || (com.campusverse.app.data.network.ApiConfig.USE_PRODUCTION_API && (!token.contains(".") || token.startsWith("token_")))) {
+                        _authState.value = AuthState.Unauthenticated
+                        return@withContext Result.failure(Exception("Registration succeeded but server returned an invalid token format."))
+                    }
 
                     val authenticatedUser = AuthenticatedUser(
-                        userId = userObj?.optString("id") ?: "user_${UUID.randomUUID().toString().take(6)}",
+                        userId = userObj?.optString("userId")?.takeIf { it.isNotBlank() }
+                            ?: userObj?.optString("id")?.takeIf { it.isNotBlank() }
+                            ?: "user_${UUID.randomUUID().toString().take(6)}",
                         email = normalizedEmail,
                         name = trimmedName,
                         role = role,
                         isEmailVerified = userObj?.optBoolean("isEmailVerified") ?: true,
-                        isAdminAuthorized = (role == UserRole.ADMIN)
+                        isAdminAuthorized = (role == UserRole.ADMIN) || (userObj?.optBoolean("isAdminAuthorized", false) == true)
                     )
 
                     val session = AuthSession(
@@ -107,63 +131,83 @@ class NetworkAuthRepository(
                     _authState.value = AuthState.Authenticated(authenticatedUser)
                     return@withContext Result.success(authenticatedUser)
                 }
+            } else if (code in 400..499 && response.isNotBlank()) {
+                val errorMessage = try {
+                    val json = JSONObject(response)
+                    val errObj = json.optJSONObject("error")
+                    errObj?.optString("message") ?: json.optString("message", "Registration rejected ($code)")
+                } catch (_: Exception) {
+                    "Registration rejected ($code)"
+                }
+                _authState.value = AuthState.Unauthenticated
+                return@withContext Result.failure(Exception(errorMessage))
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            if (com.campusverse.app.data.network.ApiConfig.USE_PRODUCTION_API) {
+                _authState.value = AuthState.Unauthenticated
+                return@withContext Result.failure(Exception("Unable to connect to authentication server: ${e.message}"))
+            }
+        }
 
-        // 2. Offline Fallback Mode
-        val existing = accountStore.getAccount(normalizedEmail)
-        if (existing != null) {
-            val user = AuthenticatedUser(
-                userId = existing.userId,
-                email = existing.email,
-                name = existing.name,
-                role = existing.role,
-                isEmailVerified = existing.isEmailVerified,
-                isAdminAuthorized = existing.isAdminAuthorized
+        // 2. Offline Fallback Mode (ONLY when explicitly in local emulator dev AND NOT production)
+        if (com.campusverse.app.data.network.ApiConfig.USE_LOCAL_EMULATOR_DEV && com.campusverse.app.data.network.ApiConfig.isEmulator && !com.campusverse.app.data.network.ApiConfig.USE_PRODUCTION_API) {
+            val existing = accountStore.getAccount(normalizedEmail)
+            if (existing != null) {
+                val user = AuthenticatedUser(
+                    userId = existing.userId,
+                    email = existing.email,
+                    name = existing.name,
+                    role = existing.role,
+                    isEmailVerified = existing.isEmailVerified,
+                    isAdminAuthorized = existing.isAdminAuthorized
+                )
+                val session = AuthSession(
+                    token = "token_" + UUID.randomUUID().toString(),
+                    user = user,
+                    expiresAtEpochMillis = System.currentTimeMillis() + sessionDurationMillis
+                )
+                sessionManager.saveSession(session)
+                _authState.value = AuthState.Authenticated(user)
+                return@withContext Result.success(user)
+            }
+
+            val salt = UUID.randomUUID().toString()
+            val passwordHash = PasswordHasher.hash(password, salt)
+            val userId = "user_" + UUID.randomUUID().toString().take(6)
+            val isAdminAuth = (role == UserRole.ADMIN)
+
+            val newAccount = StoredAccount(
+                userId = userId,
+                name = trimmedName,
+                email = normalizedEmail,
+                passwordHash = passwordHash,
+                passwordSalt = salt,
+                role = role,
+                isEmailVerified = true,
+                isAdminAuthorized = isAdminAuth
+            )
+            accountStore.saveAccount(newAccount)
+
+            val authenticatedUser = AuthenticatedUser(
+                userId = userId,
+                email = normalizedEmail,
+                name = trimmedName,
+                role = role,
+                isEmailVerified = true,
+                isAdminAuthorized = isAdminAuth
             )
             val session = AuthSession(
                 token = "token_" + UUID.randomUUID().toString(),
-                user = user,
+                user = authenticatedUser,
                 expiresAtEpochMillis = System.currentTimeMillis() + sessionDurationMillis
             )
             sessionManager.saveSession(session)
-            _authState.value = AuthState.Authenticated(user)
-            return@withContext Result.success(user)
+            _authState.value = AuthState.Authenticated(authenticatedUser)
+            return@withContext Result.success(authenticatedUser)
         }
 
-        val salt = UUID.randomUUID().toString()
-        val passwordHash = PasswordHasher.hash(password, salt)
-        val userId = "user_" + UUID.randomUUID().toString().take(6)
-        val isAdminAuth = (role == UserRole.ADMIN)
-
-        val newAccount = StoredAccount(
-            userId = userId,
-            name = trimmedName,
-            email = normalizedEmail,
-            passwordHash = passwordHash,
-            passwordSalt = salt,
-            role = role,
-            isEmailVerified = true,
-            isAdminAuthorized = isAdminAuth
-        )
-        accountStore.saveAccount(newAccount)
-
-        val authenticatedUser = AuthenticatedUser(
-            userId = userId,
-            email = normalizedEmail,
-            name = trimmedName,
-            role = role,
-            isEmailVerified = true,
-            isAdminAuthorized = isAdminAuth
-        )
-        val session = AuthSession(
-            token = "token_" + UUID.randomUUID().toString(),
-            user = authenticatedUser,
-            expiresAtEpochMillis = System.currentTimeMillis() + sessionDurationMillis
-        )
-        sessionManager.saveSession(session)
-        _authState.value = AuthState.Authenticated(authenticatedUser)
-        Result.success(authenticatedUser)
+        _authState.value = AuthState.Unauthenticated
+        Result.failure(Exception("Unable to register account. Server unreachable."))
     }
 
     override suspend fun login(email: String, password: String): Result<AuthenticatedUser> = withContext(Dispatchers.IO) {
@@ -176,23 +220,33 @@ class NetworkAuthRepository(
                 put("email", normalizedEmail)
                 put("password", password)
             }
-            val response = executeHttpRequest("POST", "$baseUrl/auth/login", payload.toString(), null)
-            if (response.isNotBlank()) {
+            val (code, response) = executeHttpRequestWithCode("POST", "$effectiveBaseUrl/auth/login", payload.toString(), null)
+            if (code in 200..299 && response.isNotBlank()) {
                 val json = JSONObject(response)
                 if (json.optBoolean("success", false)) {
                     val data = json.optJSONObject("data")
                     val userObj = data?.optJSONObject("user") ?: data
-                    val token = data?.optString("token") ?: "token_${UUID.randomUUID()}"
+                    val token = data?.optString("token") ?: ""
+
+                    if (token.isBlank() || (com.campusverse.app.data.network.ApiConfig.USE_PRODUCTION_API && (!token.contains(".") || token.startsWith("token_")))) {
+                        _authState.value = AuthState.Unauthenticated
+                        return@withContext Result.failure(Exception("Authentication failed: Server returned an invalid token format."))
+                    }
+
                     val roleStr = userObj?.optString("role") ?: "STUDENT"
                     val parsedRole = try { UserRole.valueOf(roleStr) } catch (_: Exception) { UserRole.STUDENT }
 
                     val authenticatedUser = AuthenticatedUser(
-                        userId = userObj?.optString("id") ?: "user_${UUID.randomUUID().toString().take(6)}",
+                        userId = userObj?.optString("userId")?.takeIf { it.isNotBlank() }
+                            ?: userObj?.optString("id")?.takeIf { it.isNotBlank() }
+                            ?: "user_${UUID.randomUUID().toString().take(6)}",
                         email = normalizedEmail,
-                        name = userObj?.optString("fullName") ?: userObj?.optString("name") ?: "Campus User",
+                        name = userObj?.optString("name")?.takeIf { it.isNotBlank() }
+                            ?: userObj?.optString("fullName")?.takeIf { it.isNotBlank() }
+                            ?: "Campus User",
                         role = parsedRole,
                         isEmailVerified = userObj?.optBoolean("isEmailVerified") ?: true,
-                        isAdminAuthorized = (parsedRole == UserRole.ADMIN)
+                        isAdminAuthorized = (parsedRole == UserRole.ADMIN) || (userObj?.optBoolean("isAdminAuthorized", false) == true)
                     )
 
                     val session = AuthSession(
@@ -204,61 +258,49 @@ class NetworkAuthRepository(
                     _authState.value = AuthState.Authenticated(authenticatedUser)
                     return@withContext Result.success(authenticatedUser)
                 }
+            } else if (code in 400..499 && response.isNotBlank()) {
+                val errorMessage = try {
+                    val json = JSONObject(response)
+                    val errObj = json.optJSONObject("error")
+                    errObj?.optString("message") ?: json.optString("message", "Invalid email or password")
+                } catch (_: Exception) {
+                    "Invalid email or password ($code)"
+                }
+                _authState.value = AuthState.Unauthenticated
+                return@withContext Result.failure(AuthException(AuthErrorType.INVALID_CREDENTIALS, errorMessage))
             }
-        } catch (_: Exception) {}
-
-        // 2. Check Persistent DataStore Accounts
-        val stored = accountStore.getAccount(normalizedEmail)
-        if (stored != null) {
-            val user = AuthenticatedUser(
-                userId = stored.userId,
-                email = stored.email,
-                name = stored.name,
-                role = stored.role,
-                isEmailVerified = stored.isEmailVerified,
-                isAdminAuthorized = stored.isAdminAuthorized
-            )
-            val session = AuthSession(
-                token = "token_" + UUID.randomUUID().toString(),
-                user = user,
-                expiresAtEpochMillis = System.currentTimeMillis() + sessionDurationMillis
-            )
-            sessionManager.saveSession(session)
-            _authState.value = AuthState.Authenticated(user)
-            return@withContext Result.success(user)
+        } catch (e: Exception) {
+            if (com.campusverse.app.data.network.ApiConfig.USE_PRODUCTION_API) {
+                _authState.value = AuthState.Unauthenticated
+                return@withContext Result.failure(Exception("Unable to connect to authentication server: ${e.message}"))
+            }
         }
 
-        // 3. Demo / Local Seed Accounts Match
-        val role = when {
-            normalizedEmail.contains("admin") -> UserRole.ADMIN
-            normalizedEmail.contains("alumni") -> UserRole.ALUMNI
-            normalizedEmail.contains("aspirant") -> UserRole.ASPIRANT
-            else -> UserRole.STUDENT
-        }
-        val name = when (role) {
-            UserRole.ADMIN -> "Super Administrator"
-            UserRole.ALUMNI -> "Dr. Aisha Patel"
-            UserRole.ASPIRANT -> "Kavya Sharma"
-            UserRole.STUDENT -> if (normalizedEmail.startsWith("student")) "Keval Goswami" else normalizedEmail.substringBefore("@").replace(".", " ").capitalize()
+        // 2. Offline Fallback Mode (ONLY when explicitly in local emulator dev AND NOT production)
+        if (com.campusverse.app.data.network.ApiConfig.USE_LOCAL_EMULATOR_DEV && com.campusverse.app.data.network.ApiConfig.isEmulator && !com.campusverse.app.data.network.ApiConfig.USE_PRODUCTION_API) {
+            val stored = accountStore.getAccount(normalizedEmail)
+            if (stored != null) {
+                val user = AuthenticatedUser(
+                    userId = stored.userId,
+                    email = stored.email,
+                    name = stored.name,
+                    role = stored.role,
+                    isEmailVerified = stored.isEmailVerified,
+                    isAdminAuthorized = stored.isAdminAuthorized
+                )
+                val session = AuthSession(
+                    token = "token_" + UUID.randomUUID().toString(),
+                    user = user,
+                    expiresAtEpochMillis = System.currentTimeMillis() + sessionDurationMillis
+                )
+                sessionManager.saveSession(session)
+                _authState.value = AuthState.Authenticated(user)
+                return@withContext Result.success(user)
+            }
         }
 
-        val authenticatedUser = AuthenticatedUser(
-            userId = "user_" + UUID.randomUUID().toString().take(6),
-            email = normalizedEmail,
-            name = if (name.isNotBlank()) name else "Campus User",
-            role = role,
-            isEmailVerified = true,
-            isAdminAuthorized = (role == UserRole.ADMIN)
-        )
-
-        val session = AuthSession(
-            token = "token_" + UUID.randomUUID().toString(),
-            user = authenticatedUser,
-            expiresAtEpochMillis = System.currentTimeMillis() + sessionDurationMillis
-        )
-        sessionManager.saveSession(session)
-        _authState.value = AuthState.Authenticated(authenticatedUser)
-        Result.success(authenticatedUser)
+        _authState.value = AuthState.Unauthenticated
+        Result.failure(Exception("Invalid credentials or server unreachable."))
     }
 
     override suspend fun verifyOtp(email: String, otpCode: String): Result<Boolean> = withContext(Dispatchers.IO) {
@@ -282,7 +324,7 @@ class NetworkAuthRepository(
         if (currentSession != null) {
             try {
                 withContext(Dispatchers.IO) {
-                    executeHttpRequest("POST", "$baseUrl/auth/logout", "{}", currentSession.token)
+                    executeHttpRequest("POST", "$effectiveBaseUrl/auth/logout", "{}", currentSession.token)
                 }
             } catch (_: Exception) {}
         }
@@ -294,27 +336,32 @@ class NetworkAuthRepository(
         return (_authState.value as? AuthState.Authenticated)?.user
     }
 
-    private suspend fun fetchCurrentUserFromNetwork(token: String): AuthenticatedUser? = withContext(Dispatchers.IO) {
+    private suspend fun fetchCurrentUserFromNetwork(token: String): Pair<Int, AuthenticatedUser?> = withContext(Dispatchers.IO) {
         try {
-            val response = executeHttpRequest("GET", "$baseUrl/auth/me", null, token)
-            if (response.isNotBlank()) {
+            val (code, response) = executeHttpRequestWithCode("GET", "$effectiveBaseUrl/auth/me", null, token)
+            if (code in 200..299 && response.isNotBlank()) {
                 val json = JSONObject(response)
                 if (json.optBoolean("success", false)) {
                     val data = json.getJSONObject("data")
                     val roleStr = data.optString("role", "STUDENT")
                     val parsedRole = try { UserRole.valueOf(roleStr) } catch (_: Exception) { UserRole.STUDENT }
-                    return@withContext AuthenticatedUser(
-                        userId = data.optString("id", data.optString("userId")),
+                    val user = AuthenticatedUser(
+                        userId = data.optString("userId").takeIf { it.isNotBlank() } ?: data.optString("id"),
                         email = data.optString("email"),
-                        name = data.optString("fullName", data.optString("name", "User")),
+                        name = data.optString("name").takeIf { it.isNotBlank() }
+                            ?: data.optString("fullName").takeIf { it.isNotBlank() }
+                            ?: "User",
                         role = parsedRole,
                         isEmailVerified = data.optBoolean("isEmailVerified", true),
-                        isAdminAuthorized = data.optBoolean("isAdminAuthorized", false)
+                        isAdminAuthorized = (parsedRole == UserRole.ADMIN) || data.optBoolean("isAdminAuthorized", false)
                     )
+                    return@withContext Pair(code, user)
                 }
             }
-        } catch (_: Exception) {}
-        null
+            Pair(code, null)
+        } catch (_: Exception) {
+            Pair(-1, null)
+        }
     }
 
     private fun executeHttpRequest(
@@ -323,13 +370,22 @@ class NetworkAuthRepository(
         body: String?,
         token: String?
     ): String {
+        return executeHttpRequestWithCode(method, urlString, body, token).second
+    }
+
+    private fun executeHttpRequestWithCode(
+        method: String,
+        urlString: String,
+        body: String?,
+        token: String?
+    ): Pair<Int, String> {
         var connection: HttpURLConnection? = null
-        try {
+        return try {
             val url = URL(urlString)
             connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = method
-            connection.connectTimeout = 8000
-            connection.readTimeout = 8000
+            connection.connectTimeout = com.campusverse.app.data.network.ApiConfig.CONNECT_TIMEOUT_MS
+            connection.readTimeout = com.campusverse.app.data.network.ApiConfig.READ_TIMEOUT_MS
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json")
             if (!token.isNullOrBlank()) {
@@ -351,20 +407,23 @@ class NetworkAuthRepository(
                 connection.errorStream ?: connection.inputStream
             }
 
-            if (inputStream != null) {
+            val responseBody = if (inputStream != null) {
                 BufferedReader(InputStreamReader(inputStream, "UTF-8")).use { reader ->
                     val sb = StringBuilder()
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
                         sb.append(line)
                     }
-                    return sb.toString()
+                    sb.toString()
                 }
+            } else {
+                ""
             }
-        } catch (_: Exception) {
+            Pair(responseCode, responseBody)
+        } catch (e: Exception) {
+            Pair(-1, e.message ?: "Network error")
         } finally {
             connection?.disconnect()
         }
-        return ""
     }
 }

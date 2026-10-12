@@ -55,4 +55,9 @@ interface AspirantRepository {
     // 7. Aspirant Profile
     suspend fun getAspirantProfile(): Result<AspirantProfileData>
     suspend fun updateAspirantProfile(profile: AspirantProfileData): Result<AspirantProfileData>
+
+    // 8. Notifications
+    suspend fun getNotifications(): Result<List<com.campusverse.app.data.model.AlumniNotificationItem>> = Result.success(emptyList())
+    suspend fun markNotificationAsRead(id: String): Result<Boolean> = Result.success(true)
+    suspend fun markAllNotificationsAsRead(): Result<Boolean> = Result.success(true)
 }

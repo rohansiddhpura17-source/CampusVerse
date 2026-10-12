@@ -169,6 +169,26 @@ export async function updateStudentProfile(req: Request, res: Response): Promise
     });
   }
 
+  // Enforce Academic Integrity Policy:
+  // Students cannot modify their own Degree, Major, Semester, or CGPA.
+  // These records are authoritative university registrar data.
+  if (req.user?.role === 'STUDENT' && profile?.studentProfile) {
+    const attemptedCgpaChange = cgpa !== undefined && Math.abs(Number(cgpa) - Number(profile.studentProfile.cgpa)) > 0.001;
+    const attemptedSemesterChange = semester !== undefined && Number(semester) !== Number(profile.studentProfile.semester);
+    const attemptedDegreeChange = degree !== undefined && degree !== profile.studentProfile.degree;
+    const attemptedBranchChange = branch !== undefined && branch !== profile.studentProfile.major;
+
+    if (attemptedCgpaChange || attemptedSemesterChange || attemptedDegreeChange || attemptedBranchChange) {
+      sendError(
+        res,
+        'Academic records (Degree, Major, Semester, CGPA) are controlled by university administration and cannot be modified by students.',
+        403,
+        'FORBIDDEN_ACADEMIC_MUTATION'
+      );
+      return;
+    }
+  }
+
   if (profile.studentProfile) {
     await prisma.studentProfile.update({
       where: { profileId: profile.id },

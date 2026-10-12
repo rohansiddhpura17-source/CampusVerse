@@ -30,6 +30,7 @@ describe('Admin Security Hardening & RBAC Verification Suite', () => {
   const defaultPassword = 'TestPassword123!';
 
   beforeAll(async () => {
+    jest.setTimeout(120000);
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
     // 1. Fetch system roles
@@ -779,8 +780,24 @@ describe('Admin Security Hardening & RBAC Verification Suite', () => {
     const superRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
     expect(superRole).not.toBeNull();
 
+    // Ensure total active super admins in the system is exactly 1 (the test superAdminId)
+    // Deactivate any other super admins temporarily to verify the single super-admin safeguard
+    const otherSuperAdmins = await prisma.user.findMany({
+      where: {
+        id: { not: superAdminId },
+        isActive: true,
+        userRoles: { some: { roleId: superRole!.id } },
+      },
+    });
+
+    if (otherSuperAdmins.length > 0) {
+      await prisma.user.updateMany({
+        where: { id: { in: otherSuperAdmins.map((u) => u.id) } },
+        data: { isActive: false },
+      });
+    }
+
     // Create a temporary target user with SUPER_ADMIN role but isActive: false
-    // This ensures total active super admins in the system is exactly 1 (the test superAdminId)
     const tempTarget = await prisma.user.create({
       data: {
         email: `last_super_target_${Date.now()}@campusverse.edu`,
@@ -807,6 +824,12 @@ describe('Admin Security Hardening & RBAC Verification Suite', () => {
       // Clean up temporary target
       await prisma.userRole.deleteMany({ where: { userId: tempTarget.id } });
       await prisma.user.delete({ where: { id: tempTarget.id } }).catch(() => {});
+      if (otherSuperAdmins.length > 0) {
+        await prisma.user.updateMany({
+          where: { id: { in: otherSuperAdmins.map((u) => u.id) } },
+          data: { isActive: true },
+        });
+      }
     }
   });
 

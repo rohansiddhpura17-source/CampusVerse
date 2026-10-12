@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,10 +22,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -93,9 +96,14 @@ fun NotesScreen(
     var newNoteDescription by remember { mutableStateOf("") }
     var newNoteTags by remember { mutableStateOf("") }
     var selectedFilterChip by remember { mutableStateOf("All") }
-    var bookmarkedNoteIds by remember { mutableStateOf(setOf<String>()) }
-
     val context = androidx.compose.ui.platform.LocalContext.current
+    val bookmarkPrefs = remember { context.getSharedPreferences("campusverse_bookmarks", android.content.Context.MODE_PRIVATE) }
+    val userIdKey = currentUser?.userId ?: "student_default"
+    var bookmarkedNoteIds by remember {
+        mutableStateOf(bookmarkPrefs.getStringSet("bookmarked_notes_$userIdKey", emptySet())?.toSet() ?: emptySet())
+    }
+    var isSubmittingReport by remember { mutableStateOf(false) }
+
     LaunchedEffect(currentUser) {
         viewModel.setPreferencesManager(com.campusverse.app.data.preferences.ModulePreferencesManager.getInstance(context))
         viewModel.checkAndLoadNotes(currentUser)
@@ -121,34 +129,74 @@ fun NotesScreen(
     }
 
     if (selectedNoteForReport != null) {
+        val noteToReport = selectedNoteForReport!!
         AlertDialog(
-            onDismissRequest = { selectedNoteForReport = null },
-            title = { Text("Report Study Note") },
+            onDismissRequest = {
+                if (!isSubmittingReport) {
+                    selectedNoteForReport = null
+                    reportReason = ""
+                }
+            },
+            title = {
+                Text(
+                    text = "Report Study Note",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
-                Column {
-                    Text("Please explain why this note violates campus academic guidelines:")
-                    Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .imePadding()
+                ) {
+                    Text(
+                        text = "Reporting: \"${noteToReport.title}\"",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Please explain why this note violates campus academic guidelines:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
                     OutlinedTextField(
                         value = reportReason,
                         onValueChange = { reportReason = it },
-                        placeholder = { Text("e.g. Inappropriate content, copyright...") },
-                        modifier = Modifier.fillMaxWidth()
+                        placeholder = { Text("e.g. Inappropriate content, copyright infringement, wrong syllabus...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 6
                     )
                 }
             },
             confirmButton = {
-                TextButton(
+                CampusVerseButton(
+                    text = if (isSubmittingReport) "Submitting..." else "Submit Report",
+                    enabled = reportReason.isNotBlank() && !isSubmittingReport,
                     onClick = {
-                        if (reportReason.isNotBlank() && selectedNoteForReport != null) {
-                            viewModel.reportNote(selectedNoteForReport!!.id, reportReason)
+                        if (reportReason.isNotBlank()) {
+                            isSubmittingReport = true
+                            viewModel.reportNote(noteToReport.id, reportReason.trim())
                             selectedNoteForReport = null
                             reportReason = ""
+                            isSubmittingReport = false
                         }
                     }
-                ) { Text("Submit Report") }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { selectedNoteForReport = null }) { Text("Cancel") }
+                TextButton(
+                    onClick = {
+                        selectedNoteForReport = null
+                        reportReason = ""
+                    },
+                    enabled = !isSubmittingReport
+                ) { Text("Cancel") }
             }
         )
     }
@@ -261,7 +309,7 @@ fun NotesScreen(
         is NotesUiState.Success -> {
             val prefs = state.preferences
             val dynamicFilterOptions = remember(prefs) {
-                val list = mutableListOf("All")
+                val list = mutableListOf("All", "Saved")
                 prefs?.prioritySubjects?.let { list.addAll(it) }
                 list.addAll(listOf("Verified Notes", "Trending"))
                 list.distinct()
@@ -425,6 +473,17 @@ fun NotesScreen(
                                 leadingIcon = {
                                     Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
                                 },
+                                trailingIcon = {
+                                    if (state.searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { viewModel.searchNotes("") }) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Clear,
+                                                contentDescription = "Clear search",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                },
                                 singleLine = true,
                                 shape = RoundedCornerShape(12.dp)
                             )
@@ -444,7 +503,7 @@ fun NotesScreen(
                                             selected = selectedFilterChip == filter,
                                             onClick = {
                                                 selectedFilterChip = filter
-                                                if (filter == "All") viewModel.searchNotes("")
+                                                if (filter == "All" || filter == "Saved") viewModel.searchNotes("")
                                                 else viewModel.searchNotes(filter)
                                             },
                                             label = { Text(filter) },
@@ -455,6 +514,12 @@ fun NotesScreen(
                             }
                         }
 
+                        val displayedNotes = if (selectedFilterChip == "Saved") {
+                            state.notes.filter { bookmarkedNoteIds.contains(it.id) }
+                        } else {
+                            state.notes
+                        }
+
                         // 4. Section Header
                         item {
                             Row(
@@ -463,10 +528,12 @@ fun NotesScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (state.selectedTab == StudentNotesTab.MY_NOTES)
-                                        "My Uploaded Notes (${state.notes.size})"
+                                    text = if (selectedFilterChip == "Saved")
+                                        "Saved Notes (${displayedNotes.size})"
+                                    else if (state.selectedTab == StudentNotesTab.MY_NOTES)
+                                        "My Uploaded Notes (${displayedNotes.size})"
                                     else
-                                        "Recommended Notes (${state.notes.size})",
+                                        "Recommended Notes (${displayedNotes.size})",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onBackground
@@ -475,7 +542,7 @@ fun NotesScreen(
                         }
 
                         // 5. Empty State
-                        if (state.notes.isEmpty()) {
+                        if (displayedNotes.isEmpty()) {
                             item {
                                 Box(
                                     modifier = Modifier
@@ -484,7 +551,9 @@ fun NotesScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (state.selectedTab == StudentNotesTab.MY_NOTES)
+                                        text = if (selectedFilterChip == "Saved")
+                                            "You have no saved notes yet. Tap the bookmark icon on any note to save it here."
+                                        else if (state.selectedTab == StudentNotesTab.MY_NOTES)
                                             "You haven't uploaded any study notes yet. Tap '+' below to share your notes with the campus!"
                                         else
                                             "No study notes found.",
@@ -496,7 +565,7 @@ fun NotesScreen(
                         }
 
                         // 6. Notes List
-                        items(state.notes, key = { it.id }) { note ->
+                        items(displayedNotes, key = { it.id }) { note ->
                             val isBookmarked = bookmarkedNoteIds.contains(note.id)
                             val isOwner = note.isOwnedByCurrentUser || note.userId == (currentUser?.userId ?: "")
                             val canRequestRemoval = isOwner && note.status != "REMOVAL_REQUESTED" && note.status != "REMOVED"
@@ -506,11 +575,13 @@ fun NotesScreen(
                                 isBookmarked = isBookmarked,
                                 isMyNotesTab = state.selectedTab == StudentNotesTab.MY_NOTES,
                                 onBookmarkToggle = {
-                                    bookmarkedNoteIds = if (isBookmarked) {
+                                    val updated = if (isBookmarked) {
                                         bookmarkedNoteIds - note.id
                                     } else {
                                         bookmarkedNoteIds + note.id
                                     }
+                                    bookmarkedNoteIds = updated
+                                    bookmarkPrefs.edit().putStringSet("bookmarked_notes_$userIdKey", updated).apply()
                                 },
                                 onDownloadClick = {
                                     downloadedNoteMessage = "Downloaded '${note.title}' to local device."

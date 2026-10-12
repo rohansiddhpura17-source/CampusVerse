@@ -1,6 +1,7 @@
 package com.campusverse.app.ui.screens.admin.announcements
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -196,7 +197,7 @@ private fun AnnouncementsContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(state.announcements) { item ->
+                items(state.announcements, key = { it.id }) { item ->
                     AnnouncementAdminCard(item = item)
                 }
             }
@@ -214,7 +215,11 @@ private fun AnnouncementsContent(
                 }
             },
             text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
                     OutlinedTextField(
                         value = titleText,
                         onValueChange = { titleText = it },

@@ -266,6 +266,28 @@ class FakeAspirantRepository : AspirantRepository {
         this.profile = profile
         return Result.success(this.profile)
     }
+
+    val notifications = mutableListOf(
+        com.campusverse.app.data.model.AlumniNotificationItem("notif_1", "SYSTEM", "Admission Predictor Ready", "Calculated NIT score.", false),
+        com.campusverse.app.data.model.AlumniNotificationItem("notif_2", "SCHOLARSHIP", "Scholarship Open", "Apply now.", false)
+    )
+
+    override suspend fun getNotifications(): Result<List<com.campusverse.app.data.model.AlumniNotificationItem>> {
+        return Result.success(notifications)
+    }
+
+    override suspend fun markNotificationAsRead(id: String): Result<Boolean> {
+        val idx = notifications.indexOfFirst { it.id == id }
+        if (idx != -1) notifications[idx] = notifications[idx].copy(isRead = true)
+        return Result.success(true)
+    }
+
+    override suspend fun markAllNotificationsAsRead(): Result<Boolean> {
+        for (i in notifications.indices) {
+            notifications[i] = notifications[i].copy(isRead = true)
+        }
+        return Result.success(true)
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -527,5 +549,83 @@ class AspirantModuleTests {
         assertEquals(8.0, updatedState.profile.entranceExamScores["IELTS"] ?: 0.0, 0.01)
         assertEquals(1540.0, updatedState.profile.entranceExamScores["SAT"] ?: 0.0, 0.01)
         assertEquals(94.5, updatedState.profile.entranceExamScores["GPA"] ?: 0.0, 0.01)
+    }
+
+    @Test
+    fun testAdmissionPredictorViewModel_StartsBlankAndSupportsEditLastInputs() = runTest {
+        val viewModel = AdmissionPredictorViewModel(fakeRepo)
+        advanceUntilIdle()
+
+        val initialState = viewModel.uiState.value as AdmissionPredictorUiState.Form
+        assertEquals("", initialState.gpa)
+        assertEquals("", initialState.testScore)
+
+        // Submit prediction with valid inputs
+        viewModel.onGpaChanged("9.2")
+        viewModel.onTestTypeChanged("JEE_MAIN")
+        viewModel.onTestScoreChanged("98.5")
+        viewModel.submitPrediction()
+        advanceUntilIdle()
+
+        val successState = viewModel.uiState.value as AdmissionPredictorUiState.ResultSuccess
+        assertNotNull(successState.lastForm)
+
+        // User taps Edit Inputs & Recalculate
+        viewModel.editLastInputs()
+        advanceUntilIdle()
+
+        val editedFormState = viewModel.uiState.value as AdmissionPredictorUiState.Form
+        assertEquals("9.2", editedFormState.gpa)
+        assertEquals("98.5", editedFormState.testScore)
+        assertEquals("JEE_MAIN", editedFormState.testType)
+
+        // User resets form
+        viewModel.resetForm()
+        val resetFormState = viewModel.uiState.value as AdmissionPredictorUiState.Form
+        assertEquals("", resetFormState.gpa)
+        assertEquals("", resetFormState.testScore)
+    }
+
+    @Test
+    fun testCollegeExplorerViewModel_SavedOnlyMode() = runTest {
+        val viewModel = CollegeExplorerViewModel(fakeRepo)
+        advanceUntilIdle()
+
+        val allState = viewModel.uiState.value as CollegeExplorerUiState.Success
+        assertEquals(3, allState.colleges.size)
+
+        // Switch to saved-only mode
+        viewModel.loadSavedColleges()
+        advanceUntilIdle()
+
+        val savedState = viewModel.uiState.value as CollegeExplorerUiState.Success
+        assertTrue(viewModel.isSavedOnlyMode)
+        assertEquals(1, savedState.colleges.size)
+        assertEquals("NIT", savedState.colleges.first().code)
+    }
+
+    @Test
+    fun testAspirantNotificationsViewModel_MarkAsReadAndMarkAllRead() = runTest {
+        val viewModel = com.campusverse.app.ui.screens.aspirant.account.AspirantNotificationsViewModel(fakeRepo)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as com.campusverse.app.ui.screens.aspirant.account.AspirantNotificationsUiState.Success
+        assertNotNull(state.notifications)
+
+        // Mark single as read
+        if (state.notifications.isNotEmpty()) {
+            val firstId = state.notifications.first().id
+            viewModel.markAsRead(firstId)
+            advanceUntilIdle()
+
+            val updated = (viewModel.uiState.value as com.campusverse.app.ui.screens.aspirant.account.AspirantNotificationsUiState.Success).notifications
+            assertTrue(updated.first { it.id == firstId }.isRead)
+        }
+
+        // Mark all as read
+        viewModel.markAllAsRead()
+        advanceUntilIdle()
+        val allRead = (viewModel.uiState.value as com.campusverse.app.ui.screens.aspirant.account.AspirantNotificationsUiState.Success).notifications
+        assertTrue(allRead.all { it.isRead })
     }
 }

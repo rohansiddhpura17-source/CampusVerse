@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -154,6 +155,7 @@ fun AdmissionPredictorScreen(
                     PredictionResultDisplay(
                         prediction = state.prediction,
                         history = state.history,
+                        onEditInputs = { viewModel.editLastInputs() },
                         onNewPrediction = { viewModel.resetForm() }
                     )
                 }
@@ -319,7 +321,7 @@ private fun AdmissionPredictorForm(
                     // GPA Input
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            text = "12th Percentage / GPA (0.0 - 10.0 Scale)",
+                            text = "12th Academic Record (GPA or %)",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -329,7 +331,7 @@ private fun AdmissionPredictorForm(
                             onValueChange = onGpaChange,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            placeholder = { Text("e.g. 9.2 or 3.9") },
+                            placeholder = { Text("e.g. 8.8 (0-10 GPA) or 88.5 (0-100%)") },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -337,6 +339,11 @@ private fun AdmissionPredictorForm(
                                 unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                             ),
                             singleLine = true
+                        )
+                        Text(
+                            text = "Enter GPA on 0.0 - 10.0 scale (e.g. 8.8) or percentage 0 - 100% (e.g. 88.5%)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
 
@@ -378,10 +385,12 @@ private fun AdmissionPredictorForm(
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         val scoreHint = when (state.testType) {
                             "JEE_MAIN" -> "Percentile (e.g. 98.4)"
-                            "SAT" -> "Total Score out of 1600 (e.g. 1490)"
+                            "JEE_ADVANCED" -> "Marks out of 360"
+                            "SAT" -> "Score out of 1600 (e.g. 1490)"
                             "ACT" -> "Composite Score out of 36 (e.g. 33)"
                             "BITSAT" -> "Score out of 390 (e.g. 320)"
                             "GRE" -> "Score out of 340 (e.g. 325)"
+                            "NEET" -> "Marks out of 720 (e.g. 620)"
                             else -> "Exam Score"
                         }
                         Text(
@@ -395,7 +404,18 @@ private fun AdmissionPredictorForm(
                             onValueChange = onTestScoreChange,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            placeholder = { Text("Enter score") },
+                            placeholder = {
+                                Text(when (state.testType) {
+                                    "JEE_MAIN" -> "e.g. 98.4"
+                                    "JEE_ADVANCED" -> "e.g. 240"
+                                    "SAT" -> "e.g. 1490"
+                                    "ACT" -> "e.g. 33"
+                                    "BITSAT" -> "e.g. 320"
+                                    "GRE" -> "e.g. 325"
+                                    "NEET" -> "e.g. 620"
+                                    else -> "Enter score"
+                                })
+                            },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -446,6 +466,7 @@ private fun AdmissionPredictorForm(
 fun PredictionResultDisplay(
     prediction: AdmissionPredictionItem,
     history: List<AdmissionPredictionItem>,
+    onEditInputs: () -> Unit = {},
     onNewPrediction: () -> Unit
 ) {
     val badgeColor = when (prediction.qualificationStatus) {
@@ -579,20 +600,34 @@ fun PredictionResultDisplay(
             }
         }
 
-        // Recalculate Action Trigger
+        // Action Buttons
         item {
-            OutlinedButton(
-                onClick = onNewPrediction,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.secondary)
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Run Another Prediction", fontWeight = FontWeight.SemiBold)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = onEditInputs,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Edit Inputs & Recalculate", fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = onNewPrediction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Start Fresh Prediction", fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }

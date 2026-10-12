@@ -58,7 +58,7 @@ class AdminAnnouncementsViewModel(
                     val current = _uiState.value
                     if (current is AdminAnnouncementsUiState.Success) {
                         _uiState.value = current.copy(
-                            announcements = listOf(item) + current.announcements,
+                            announcements = listOf(item) + current.announcements.filter { it.id != item.id },
                             isComposing = false,
                             feedbackMessage = "Broadcast announcement published to ${item.deliveredCount} users!"
                         )

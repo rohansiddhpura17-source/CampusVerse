@@ -41,6 +41,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -49,12 +51,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.campusverse.app.data.model.ScholarshipItem
+import kotlinx.coroutines.launch
 
 /**
  * ASP — Scholarship Details Screen
@@ -71,12 +76,15 @@ fun ScholarshipDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(scholarshipId) {
         viewModel.loadScholarship(scholarshipId)
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -155,7 +163,12 @@ fun ScholarshipDetailScreen(
                     }
                 }
                 is ScholarshipDetailUiState.Success -> {
-                    ScholarshipDetailContent(scholarship = state.scholarship)
+                    ScholarshipDetailContent(
+                        scholarship = state.scholarship,
+                        onShowMessage = { msg ->
+                            scope.launch { snackbarHostState.showSnackbar(msg) }
+                        }
+                    )
                 }
             }
         }
@@ -163,8 +176,12 @@ fun ScholarshipDetailScreen(
 }
 
 @Composable
-private fun ScholarshipDetailContent(scholarship: ScholarshipItem) {
+private fun ScholarshipDetailContent(
+    scholarship: ScholarshipItem,
+    onShowMessage: (String) -> Unit
+) {
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val isExpired = scholarship.deadline.isNotBlank() && scholarship.deadline < "2026-10-11"
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -204,6 +221,20 @@ private fun ScholarshipDetailContent(scholarship: ScholarshipItem) {
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            if (isExpired) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
+                                ) {
+                                    Text(
+                                        text = "EXPIRED",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant
@@ -510,13 +541,22 @@ private fun ScholarshipDetailContent(scholarship: ScholarshipItem) {
                         Icon(
                             imageVector = Icons.Default.EventBusy,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
+                            tint = if (isExpired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
-                            Text("Application Deadline", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
-                            Text(scholarship.deadline, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            Text(
+                                text = if (isExpired) "Application Deadline (Expired)" else "Application Deadline",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isExpired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = scholarship.deadline,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isExpired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -527,16 +567,28 @@ private fun ScholarshipDetailContent(scholarship: ScholarshipItem) {
         item {
             Button(
                 onClick = {
-                    val url = scholarship.applicationUrl?.takeIf { it.isNotBlank() } ?: "https://scholarships.gov.in"
-                    try {
-                        uriHandler.openUri(url)
-                    } catch (_: Exception) {}
+                    val rawUrl = scholarship.applicationUrl?.trim()
+                    if (rawUrl.isNullOrBlank()) {
+                        onShowMessage("Official application portal link is not provided for this scholarship")
+                    } else if (!rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) {
+                        onShowMessage("Invalid portal link format: must start with https://")
+                    } else {
+                        try {
+                            uriHandler.openUri(rawUrl)
+                        } catch (e: Exception) {
+                            onShowMessage("Unable to open browser: ${e.message ?: "Unknown error"}")
+                        }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
+                enabled = !isExpired,
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
             ) {
                 Icon(
                     imageVector = Icons.Default.OpenInBrowser,
@@ -544,7 +596,10 @@ private fun ScholarshipDetailContent(scholarship: ScholarshipItem) {
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Apply on Official Portal", fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (isExpired) "Application Closed (Deadline Passed)" else "Apply on Official Portal",
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

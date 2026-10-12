@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
@@ -114,6 +115,14 @@ fun CommunityScreen(
                 }
             }
             is CommunityListUiState.Success -> {
+                val displayedCommunities = remember(state.communities, selectedFilterChip) {
+                    if (selectedFilterChip == "My Communities") {
+                        state.communities.filter { it.isMember }
+                    } else {
+                        state.communities
+                    }
+                }
+
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -132,7 +141,17 @@ fun CommunityScreen(
                                 Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
                             },
                             trailingIcon = {
-                                Icon(imageVector = Icons.Outlined.Tune, contentDescription = "Filter")
+                                if (state.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { viewModel.loadCommunities("") }) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Clear,
+                                            contentDescription = "Clear search",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    Icon(imageVector = Icons.Outlined.Tune, contentDescription = "Filter")
+                                }
                             },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -152,8 +171,10 @@ fun CommunityScreen(
                                     selected = selectedFilterChip == filter,
                                     onClick = {
                                         selectedFilterChip = filter
-                                        if (filter == "All") viewModel.loadCommunities("")
-                                        else viewModel.loadCommunities(filter)
+                                        if (filter != "My Communities") {
+                                            if (filter == "All") viewModel.loadCommunities("")
+                                            else viewModel.loadCommunities(filter)
+                                        }
                                     },
                                     label = { Text(filter) },
                                     shape = RoundedCornerShape(20.dp)
@@ -209,7 +230,7 @@ fun CommunityScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Recommended Communities (${state.communities.size})",
+                                text = if (selectedFilterChip == "My Communities") "My Communities (${displayedCommunities.size})" else "Recommended Communities (${displayedCommunities.size})",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground
@@ -218,7 +239,7 @@ fun CommunityScreen(
                     }
 
                     // 5. Communities List
-                    if (state.communities.isEmpty()) {
+                    if (displayedCommunities.isEmpty()) {
                         item {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
@@ -226,7 +247,7 @@ fun CommunityScreen(
                                 color = MaterialTheme.colorScheme.surface
                             ) {
                                 Text(
-                                    text = "No campus communities found matching your search.",
+                                    text = if (selectedFilterChip == "My Communities") "You have not joined any campus communities yet. Join one from the list to see it here!" else "No campus communities found matching your search.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(20.dp)
@@ -234,7 +255,7 @@ fun CommunityScreen(
                             }
                         }
                     } else {
-                        items(state.communities) { comm ->
+                        items(displayedCommunities) { comm ->
                             CommunityCardItem(
                                 community = comm,
                                 onOpen = {

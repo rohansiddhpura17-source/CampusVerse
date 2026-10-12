@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -86,8 +89,9 @@ fun AspirantHomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     var selectedCollegeId by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    LifecycleResumeEffect(Unit) {
         viewModel.loadHomeSummary()
+        onPauseOrDispose {}
     }
 
     Scaffold(
@@ -131,11 +135,25 @@ fun AspirantHomeScreen(
                             contentDescription = "Aspirant Store"
                         )
                     }
+                    val unreadCount = (uiState as? AspirantHomeUiState.Success)?.summary?.notifications?.count { !it.isRead } ?: 0
                     IconButton(onClick = onNavigateToNotifications) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = "Notifications"
-                        )
+                        BadgedBox(
+                            badge = {
+                                if (unreadCount > 0) {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.error,
+                                        contentColor = MaterialTheme.colorScheme.onError
+                                    ) {
+                                        Text("$unreadCount")
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Notifications"
+                            )
+                        }
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(

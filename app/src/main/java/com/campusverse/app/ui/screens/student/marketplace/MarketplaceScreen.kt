@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,8 +20,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Add
@@ -36,6 +42,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -77,8 +84,17 @@ fun MarketplaceScreen(
     var newListingPrice by remember { mutableStateOf("") }
     var newListingCategory by remember { mutableStateOf("Books") }
     var newListingCondition by remember { mutableStateOf("GOOD") }
+    var createListingError by remember { mutableStateOf<String?>(null) }
+    var isPublishingListing by remember { mutableStateOf(false) }
 
-    val filterOptions = listOf("All", "Books", "Electronics", "Study Materials", "Lab Equipment", "Furniture")
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val bookmarkPrefs = remember { context.getSharedPreferences("campusverse_bookmarks", android.content.Context.MODE_PRIVATE) }
+    val userIdKey = "student_marketplace"
+    var savedProductIds by remember {
+        mutableStateOf(bookmarkPrefs.getStringSet("saved_marketplace_$userIdKey", emptySet())?.toSet() ?: emptySet())
+    }
+
+    val filterOptions = listOf("All", "Saved", "Books", "Electronics", "Study Materials", "Lab Equipment", "Furniture")
 
     Scaffold(
         topBar = {
@@ -152,6 +168,17 @@ fun MarketplaceScreen(
                             leadingIcon = {
                                 Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
                             },
+                            trailingIcon = {
+                                if (state.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { viewModel.search("") }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Clear search",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
                         )
@@ -170,14 +197,26 @@ fun MarketplaceScreen(
                                     selected = selectedFilterChip == filter,
                                     onClick = {
                                         selectedFilterChip = filter
-                                        if (filter == "All") viewModel.setCategory("ALL")
+                                        if (filter == "All" || filter == "Saved") viewModel.setCategory("ALL")
                                         else viewModel.setCategory(filter.uppercase().replace(" ", "_"))
                                     },
-                                    label = { Text(filter) },
+                                    label = {
+                                        if (filter == "Saved") {
+                                            Text("Saved (${savedProductIds.size})")
+                                        } else {
+                                            Text(filter)
+                                        }
+                                    },
                                     shape = RoundedCornerShape(20.dp)
                                 )
                             }
                         }
+                    }
+
+                    val displayItems = if (selectedFilterChip == "Saved") {
+                        state.items.filter { savedProductIds.contains(it.id) }
+                    } else {
+                        state.items
                     }
 
                     // 3. Hero Marketplace Banner (Stitch Spec)
@@ -245,7 +284,7 @@ fun MarketplaceScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Recommended For You (${state.items.size})",
+                                text = if (selectedFilterChip == "Saved") "Saved Listings (${displayItems.size})" else "Recommended For You (${displayItems.size})",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground
@@ -254,25 +293,57 @@ fun MarketplaceScreen(
                     }
 
                     // 5. Products List
-                    if (state.items.isEmpty()) {
+                    if (displayItems.isEmpty()) {
                         item {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surface
                             ) {
-                                Text(
-                                    text = "No marketplace listings found. Sell your textbooks or devices!",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(20.dp)
-                                )
+                                Column(
+                                    modifier = Modifier.padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = if (selectedFilterChip == "Saved")
+                                            "You have not saved any marketplace listings yet. Tap the bookmark icon on any item to save it here!"
+                                        else if (state.searchQuery.isNotEmpty() || state.selectedCategory != "ALL")
+                                            "No listings match your search or filters."
+                                        else
+                                            "No marketplace listings found. Sell your textbooks or devices!",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (selectedFilterChip == "Saved" || state.searchQuery.isNotEmpty() || state.selectedCategory != "ALL") {
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        OutlinedButton(
+                                            onClick = {
+                                                selectedFilterChip = "All"
+                                                viewModel.setCategory("ALL")
+                                                viewModel.search("")
+                                            }
+                                        ) {
+                                            Text("Clear Filters")
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else {
-                        items(state.items) { product ->
+                        items(displayItems) { product ->
+                            val isSaved = savedProductIds.contains(product.id)
                             MarketplaceCardItem(
                                 product = product,
+                                isBookmarked = isSaved,
+                                onToggleBookmark = {
+                                    val newSaved = if (savedProductIds.contains(product.id)) {
+                                        savedProductIds - product.id
+                                    } else {
+                                        savedProductIds + product.id
+                                    }
+                                    savedProductIds = newSaved
+                                    bookmarkPrefs.edit().putStringSet("saved_marketplace_$userIdKey", newSaved).apply()
+                                },
                                 onClick = {
                                     if (onNavigateToProductDetail != {}) {
                                         onNavigateToProductDetail(product.id)
@@ -289,13 +360,19 @@ fun MarketplaceScreen(
         // Create Listing Sheet
         if (showCreateListingSheet) {
             androidx.compose.material3.ModalBottomSheet(
-                onDismissRequest = { showCreateListingSheet = false },
+                onDismissRequest = {
+                    showCreateListingSheet = false
+                    createListingError = null
+                    isPublishingListing = false
+                },
                 containerColor = MaterialTheme.colorScheme.surface
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(24.dp)
+                        .imePadding()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
@@ -303,10 +380,29 @@ fun MarketplaceScreen(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
+
+                    if (createListingError != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = createListingError!!,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
                     OutlinedTextField(
                         value = newListingTitle,
-                        onValueChange = { newListingTitle = it },
-                        label = { Text("Item Title") },
+                        onValueChange = {
+                            newListingTitle = it
+                            if (createListingError != null) createListingError = null
+                        },
+                        label = { Text("Item Title *") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -318,8 +414,11 @@ fun MarketplaceScreen(
                     )
                     OutlinedTextField(
                         value = newListingPrice,
-                        onValueChange = { newListingPrice = it },
-                        label = { Text("Price (₹)") },
+                        onValueChange = {
+                            newListingPrice = it
+                            if (createListingError != null) createListingError = null
+                        },
+                        label = { Text("Price (₹) *") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -351,24 +450,39 @@ fun MarketplaceScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     CampusVerseButton(
-                        text = "Publish Listing",
+                        text = if (isPublishingListing) "Publishing..." else "Publish Listing",
+                        enabled = !isPublishingListing,
                         onClick = {
-                            val priceVal = newListingPrice.toDoubleOrNull() ?: 0.0
-                            if (newListingTitle.isNotBlank() && priceVal > 0.0) {
-                                viewModel.createListing(
-                                    title = newListingTitle.trim(),
-                                    description = newListingDescription.trim(),
-                                    price = priceVal,
-                                    category = newListingCategory,
-                                    condition = newListingCondition,
-                                    onSuccess = {
-                                        showCreateListingSheet = false
-                                        newListingTitle = ""
-                                        newListingDescription = ""
-                                        newListingPrice = ""
-                                    }
-                                )
+                            val priceVal = newListingPrice.toDoubleOrNull()
+                            if (newListingTitle.isBlank()) {
+                                createListingError = "Please enter an item title."
+                                return@CampusVerseButton
                             }
+                            if (priceVal == null || priceVal <= 0.0) {
+                                createListingError = "Please enter a valid price greater than ₹0."
+                                return@CampusVerseButton
+                            }
+                            createListingError = null
+                            isPublishingListing = true
+                            viewModel.createListing(
+                                title = newListingTitle.trim(),
+                                description = newListingDescription.trim(),
+                                price = priceVal,
+                                category = newListingCategory,
+                                condition = newListingCondition,
+                                onSuccess = {
+                                    isPublishingListing = false
+                                    showCreateListingSheet = false
+                                    newListingTitle = ""
+                                    newListingDescription = ""
+                                    newListingPrice = ""
+                                    createListingError = null
+                                },
+                                onError = { errMsg ->
+                                    isPublishingListing = false
+                                    createListingError = errMsg
+                                }
+                            )
                         }
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -386,32 +500,100 @@ fun MarketplaceScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .navigationBarsPadding()
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = prod.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                            softWrap = true
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val isSaved = savedProductIds.contains(prod.id)
+                            IconButton(
+                                onClick = {
+                                    val newSaved = if (savedProductIds.contains(prod.id)) {
+                                        savedProductIds - prod.id
+                                    } else {
+                                        savedProductIds + prod.id
+                                    }
+                                    savedProductIds = newSaved
+                                    bookmarkPrefs.edit().putStringSet("saved_marketplace_$userIdKey", newSaved).apply()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                                    contentDescription = if (isSaved) "Remove bookmark" else "Save item",
+                                    tint = if (isSaved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                text = "₹${prod.price.toInt()}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = prod.title,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
+                            text = "Condition: ${prod.condition} • Category: ${prod.category}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            text = "₹${prod.price.toInt()}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        if (prod.status == "SOLD") {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.errorContainer
+                            ) {
+                                Text(
+                                    text = "SOLD",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
-                    Text(
-                        text = "Condition: ${prod.condition} • Category: ${prod.category}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+
+                    // Verified Student Seller Info
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Seller: ${prod.sellerName}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (!prod.sellerPhone.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Contact: ${prod.sellerPhone}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
                     Text(
                         text = prod.description,
                         style = MaterialTheme.typography.bodyMedium,
@@ -479,6 +661,8 @@ fun MarketplaceScreen(
 @Composable
 private fun MarketplaceCardItem(
     product: MarketplaceProduct,
+    isBookmarked: Boolean,
+    onToggleBookmark: () -> Unit,
     onClick: () -> Unit
 ) {
     Card(
@@ -537,6 +721,18 @@ private fun MarketplaceCardItem(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
+                IconButton(
+                    onClick = onToggleBookmark,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                        contentDescription = if (isBookmarked) "Remove bookmark" else "Save item",
+                        tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "₹${product.price.toInt()}",
                     style = MaterialTheme.typography.titleLarge,

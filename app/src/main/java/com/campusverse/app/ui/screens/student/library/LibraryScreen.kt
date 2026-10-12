@@ -1,5 +1,8 @@
 package com.campusverse.app.ui.screens.student.library
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,11 +20,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Search
@@ -41,6 +47,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,28 +74,85 @@ fun LibraryScreen(
     var openedResource by remember { mutableStateOf<LibraryResource?>(null) }
     var selectedFilterChip by remember { mutableStateOf("All") }
 
-    val filterOptions = listOf("All", "Textbooks", "E-Books", "Reference", "Journals", "Past Papers")
+    val filterOptions = listOf("All", "Saved", "Textbooks", "E-Books", "Reference", "Journals", "Past Papers")
 
     if (openedResource != null) {
+        val resource = openedResource!!
+        val context = LocalContext.current
         AlertDialog(
             onDismissRequest = { openedResource = null },
-            title = { Text(openedResource!!.title, fontWeight = FontWeight.Bold) },
+            title = {
+                Text(
+                    text = resource.title,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
             text = {
-                Column {
-                    Text("Author: ${openedResource!!.author}")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Author: ${resource.author}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Category / Format: ${resource.category.uppercase()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    if (!resource.isbn.isNullOrBlank()) {
+                        Text(
+                            text = "ISBN: ${resource.isbn}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = "Location: ${resource.location ?: "IT Block — Library Floor 2"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Copies Available: ${resource.availableCopies} of ${resource.totalCopies}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Format: ${openedResource!!.category}")
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("Location: ${openedResource!!.location ?: "IT Block — Library Floor 2"}")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Status: Available in campus repository")
+                    Text(
+                        text = "Digital Access Link:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = resource.fileUrl,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
                 }
             },
             confirmButton = {
-                TextButton(onClick = { openedResource = null }) { Text("Open Resource") }
+                CampusVerseButton(
+                    text = "Open Resource",
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(resource.fileUrl))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Cannot open resource link: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { openedResource = null }) { Text("Close") }
+                TextButton(onClick = { openedResource = null }) {
+                    Text("Close")
+                }
             }
         )
     }
@@ -149,7 +213,17 @@ fun LibraryScreen(
                                 Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
                             },
                             trailingIcon = {
-                                Icon(imageVector = Icons.Outlined.Tune, contentDescription = "Filter")
+                                if (state.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { viewModel.searchLibrary("") }) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Clear,
+                                            contentDescription = "Clear search",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    Icon(imageVector = Icons.Outlined.Tune, contentDescription = "Filter")
+                                }
                             },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -169,7 +243,7 @@ fun LibraryScreen(
                                     selected = selectedFilterChip == filter,
                                     onClick = {
                                         selectedFilterChip = filter
-                                        if (filter == "All") viewModel.setCategory("ALL")
+                                        if (filter == "All" || filter == "Saved") viewModel.setCategory("ALL")
                                         else viewModel.setCategory(filter.uppercase())
                                     },
                                     label = { Text(filter) },
@@ -177,6 +251,12 @@ fun LibraryScreen(
                                 )
                             }
                         }
+                    }
+
+                    val displayResources = if (selectedFilterChip == "Saved") {
+                        state.resources.filter { it.isBookmarked }
+                    } else {
+                        state.resources
                     }
 
                     // 3. Section Header
@@ -187,7 +267,10 @@ fun LibraryScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Recommended For You (${state.resources.size})",
+                                text = if (selectedFilterChip == "Saved")
+                                    "Saved Resources (${displayResources.size})"
+                                else
+                                    "Recommended For You (${displayResources.size})",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground
@@ -196,7 +279,7 @@ fun LibraryScreen(
                     }
 
                     // 4. Resources List
-                    if (state.resources.isEmpty()) {
+                    if (displayResources.isEmpty()) {
                         item {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
@@ -204,7 +287,10 @@ fun LibraryScreen(
                                 color = MaterialTheme.colorScheme.surface
                             ) {
                                 Text(
-                                    text = "No library items matched your selection.",
+                                    text = if (selectedFilterChip == "Saved")
+                                        "You have no saved library resources yet. Tap the bookmark icon on any item to save it here."
+                                    else
+                                        "No library items matched your selection.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(20.dp)
@@ -212,10 +298,11 @@ fun LibraryScreen(
                             }
                         }
                     } else {
-                        items(state.resources) { item ->
+                        items(displayResources) { item ->
                             LibraryCardItem(
                                 resource = item,
-                                onOpen = { openedResource = item }
+                                onOpen = { openedResource = item },
+                                onToggleBookmark = { viewModel.toggleBookmark(item.id) }
                             )
                         }
                     }
@@ -228,7 +315,8 @@ fun LibraryScreen(
 @Composable
 private fun LibraryCardItem(
     resource: LibraryResource,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    onToggleBookmark: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -254,11 +342,13 @@ private fun LibraryCardItem(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
-                Icon(
-                    imageVector = Icons.Default.BookmarkBorder,
-                    contentDescription = "Save",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                IconButton(onClick = onToggleBookmark) {
+                    Icon(
+                        imageVector = if (resource.isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                        contentDescription = if (resource.isBookmarked) "Remove bookmark" else "Bookmark resource",
+                        tint = if (resource.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

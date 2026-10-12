@@ -23,8 +23,7 @@ describe('PHASE 8 — Cross-Role Integration & Complete User Journeys', () => {
   beforeAll(async () => {
     const passwordHash = await bcrypt.hash('Password123', 10);
 
-    // Ensure all demo users exist
-    await prisma.user.upsert({
+    const adminUser = await prisma.user.upsert({
       where: { email: 'admin@campusverse.edu' },
       update: { passwordHash, isActive: true, isEmailVerified: true, isAdminAuthorized: true },
       create: {
@@ -37,6 +36,15 @@ describe('PHASE 8 — Cross-Role Integration & Complete User Journeys', () => {
         profile: { create: { fullName: 'Super Administrator' } }
       }
     });
+
+    const superAdminRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
+    if (superAdminRole) {
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: adminUser.id, roleId: superAdminRole.id } },
+        update: {},
+        create: { userId: adminUser.id, roleId: superAdminRole.id }
+      });
+    }
 
     await prisma.user.upsert({
       where: { email: 'student@campusverse.edu' },

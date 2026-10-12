@@ -97,6 +97,7 @@ sealed class Screen(val route: String) {
     // Aspirant Module Screens (Core, Colleges, Predictor, Scholarships, AI, Profile, Settings)
     data object AspirantHome : Screen("aspirant_home")
     data object AspirantCollegeExplorer : Screen("aspirant_colleges")
+    data object AspirantSavedColleges : Screen("aspirant_saved_colleges")
     data object AspirantCollegeComparison : Screen("aspirant_college_comparison")
     data object AspirantPredictor : Screen("aspirant_predictor")
     data object AspirantScholarships : Screen("aspirant_scholarships")

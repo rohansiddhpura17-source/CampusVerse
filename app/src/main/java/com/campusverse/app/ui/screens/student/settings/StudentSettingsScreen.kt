@@ -59,12 +59,28 @@ fun StudentSettingsScreen(
         studentProfile = com.campusverse.app.data.repository.NetworkStudentRepository.instance.getStudentProfile().getOrNull()
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val fingerprintManager = remember(context) {
+        try {
+            androidx.core.hardware.fingerprint.FingerprintManagerCompat.from(context)
+        } catch (_: Exception) {
+            null
+        }
+    }
+    val isBiometricAvailable = remember(fingerprintManager) {
+        try {
+            fingerprintManager?.isHardwareDetected == true && fingerprintManager.hasEnrolledFingerprints()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     var pushNotificationsEnabled by remember { mutableStateOf(true) }
     var emailAlertsEnabled by remember { mutableStateOf(true) }
     var publicProfileVisible by remember { mutableStateOf(true) }
     var academicMetricsVisible by remember { mutableStateOf(false) }
-    var biometricEnabled by remember { mutableStateOf(true) }
-    var twoFactorAuthEnabled by remember { mutableStateOf(true) }
+    var biometricEnabled by remember(isBiometricAvailable) { mutableStateOf(false) }
+    var twoFactorAuthEnabled by remember { mutableStateOf(false) }
 
     var showPasswordDialog by remember { mutableStateOf(false) }
     var currentPassword by remember { mutableStateOf("") }
@@ -233,26 +249,25 @@ fun StudentSettingsScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     SettingToggleRow(
                         title = "Biometric Login",
-                        subtitle = "Enable Fingerprint or Face ID for fast login",
-                        checked = biometricEnabled,
+                        subtitle = if (isBiometricAvailable) "Use fingerprint or face unlock" else "Biometric authentication is not supported or not enrolled on this device",
+                        checked = if (isBiometricAvailable) biometricEnabled else false,
+                        enabled = isBiometricAvailable,
                         onCheckedChange = {
-                            biometricEnabled = it
-                            scope.launch {
-                                snackbarHostState.showSnackbar("Biometric login ${if (it) "enabled" else "disabled"}")
+                            if (isBiometricAvailable) {
+                                biometricEnabled = it
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("Biometric login ${if (it) "enabled" else "disabled"}")
+                                }
                             }
                         }
                     )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingToggleRow(
                         title = "Two-Factor Authentication",
-                        subtitle = "Require 6-digit OTP confirmation on new sign-ins",
-                        checked = twoFactorAuthEnabled,
-                        onCheckedChange = {
-                            twoFactorAuthEnabled = it
-                            scope.launch {
-                                snackbarHostState.showSnackbar("Two-Factor Authentication ${if (it) "enabled" else "disabled"}")
-                            }
-                        }
+                        subtitle = "Server-side 2FA is currently managed by institution administrators (unavailable for mobile sign-in)",
+                        checked = false,
+                        enabled = false,
+                        onCheckedChange = {}
                     )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Row(
@@ -442,6 +457,7 @@ private fun SettingToggleRow(
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -453,17 +469,19 @@ private fun SettingToggleRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
         }
         Switch(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = onCheckedChange
         )
     }

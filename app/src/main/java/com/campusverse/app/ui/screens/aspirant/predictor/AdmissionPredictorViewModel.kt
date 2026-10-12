@@ -16,17 +16,18 @@ sealed interface AdmissionPredictorUiState {
     data class Form(
         val colleges: List<CollegeItem> = emptyList(),
         val selectedCollege: CollegeItem? = null,
-        val programName: String = "B.Tech in Computer Science and Engineering",
+        val programName: String = "",
         val degree: String = "B.TECH",
-        val gpa: String = "9.2",
+        val gpa: String = "",
         val testType: String = "JEE_MAIN",
-        val testScore: String = "98.4",
+        val testScore: String = "",
         val isSubmitting: Boolean = false,
         val errorMessage: String? = null
     ) : AdmissionPredictorUiState
 
     data class ResultSuccess(
         val prediction: AdmissionPredictionItem,
+        val lastForm: Form? = null,
         val history: List<AdmissionPredictionItem> = emptyList()
     ) : AdmissionPredictorUiState
 }
@@ -55,7 +56,12 @@ class AdmissionPredictorViewModel(
 
                 _uiState.value = AdmissionPredictorUiState.Form(
                     colleges = colleges,
-                    selectedCollege = selected
+                    selectedCollege = selected,
+                    programName = selected?.programs?.firstOrNull()?.name ?: "",
+                    degree = selected?.programs?.firstOrNull()?.degree ?: "B.TECH",
+                    gpa = "",
+                    testType = "JEE_MAIN",
+                    testScore = ""
                 )
             }
 
@@ -70,7 +76,8 @@ class AdmissionPredictorViewModel(
         if (current is AdmissionPredictorUiState.Form) {
             _uiState.value = current.copy(
                 selectedCollege = college,
-                programName = college.programs.firstOrNull()?.name ?: "B.Tech in Computer Science and Engineering"
+                programName = college.programs.firstOrNull()?.name ?: current.programName,
+                errorMessage = null
             )
         }
     }
@@ -78,14 +85,14 @@ class AdmissionPredictorViewModel(
     fun onProgramNameChanged(name: String) {
         val current = _uiState.value
         if (current is AdmissionPredictorUiState.Form) {
-            _uiState.value = current.copy(programName = name)
+            _uiState.value = current.copy(programName = name, errorMessage = null)
         }
     }
 
     fun onDegreeChanged(degree: String) {
         val current = _uiState.value
         if (current is AdmissionPredictorUiState.Form) {
-            _uiState.value = current.copy(degree = degree)
+            _uiState.value = current.copy(degree = degree, errorMessage = null)
         }
     }
 
@@ -99,7 +106,7 @@ class AdmissionPredictorViewModel(
     fun onTestTypeChanged(testType: String) {
         val current = _uiState.value
         if (current is AdmissionPredictorUiState.Form) {
-            _uiState.value = current.copy(testType = testType)
+            _uiState.value = current.copy(testType = testType, errorMessage = null)
         }
     }
 
@@ -113,17 +120,91 @@ class AdmissionPredictorViewModel(
     fun submitPrediction() {
         val current = _uiState.value
         if (current !is AdmissionPredictorUiState.Form) return
+        if (current.isSubmitting) return
 
-        val gpaVal = current.gpa.toDoubleOrNull()
-        if (gpaVal == null || gpaVal < 0.0 || gpaVal > 10.0) {
-            _uiState.value = current.copy(errorMessage = "Please enter a valid GPA between 0.0 and 10.0")
+        if (current.programName.isBlank()) {
+            _uiState.value = current.copy(errorMessage = "Please enter or select a target major/program")
             return
         }
 
-        val scoreVal = current.testScore.toDoubleOrNull()
-        if (scoreVal == null || scoreVal < 0.0) {
-            _uiState.value = current.copy(errorMessage = "Please enter a valid standardized test score")
+        val gpaTrimmed = current.gpa.trim()
+        if (gpaTrimmed.isBlank()) {
+            _uiState.value = current.copy(errorMessage = "Please enter your 12th GPA (0.0-10.0) or percentage (0-100%)")
             return
+        }
+        val gpaNum = gpaTrimmed.toDoubleOrNull()
+        if (gpaNum == null) {
+            _uiState.value = current.copy(errorMessage = "Please enter a valid numeric value for academic performance")
+            return
+        }
+        if (gpaNum < 0.0 || gpaNum > 100.0 || (gpaNum > 10.0 && gpaNum < 35.0)) {
+            _uiState.value = current.copy(errorMessage = "Academic score must be between 0.0 - 10.0 (GPA) or 35 - 100 (Percentage)")
+            return
+        }
+        // Normalize: if user entered percentage >= 35, scale to 10-point GPA for standard calculation
+        val normalizedGpa = if (gpaNum >= 35.0) (gpaNum / 10.0).coerceIn(0.0, 10.0) else gpaNum
+
+        val scoreTrimmed = current.testScore.trim()
+        if (scoreTrimmed.isBlank()) {
+            _uiState.value = current.copy(errorMessage = "Please enter your standardized test score or percentile")
+            return
+        }
+        val scoreNum = scoreTrimmed.toDoubleOrNull()
+        if (scoreNum == null) {
+            _uiState.value = current.copy(errorMessage = "Please enter a valid numeric test score")
+            return
+        }
+
+        // Validate score ranges according to exam type
+        when (current.testType) {
+            "JEE_MAIN" -> {
+                if (scoreNum !in 0.0..100.0) {
+                    _uiState.value = current.copy(errorMessage = "JEE Main percentile must be between 0.0 and 100.0")
+                    return
+                }
+            }
+            "JEE_ADVANCED" -> {
+                if (scoreNum !in 0.0..360.0) {
+                    _uiState.value = current.copy(errorMessage = "JEE Advanced marks must be between 0 and 360")
+                    return
+                }
+            }
+            "SAT" -> {
+                if (scoreNum !in 400.0..1600.0) {
+                    _uiState.value = current.copy(errorMessage = "SAT total score must be between 400 and 1600")
+                    return
+                }
+            }
+            "ACT" -> {
+                if (scoreNum !in 1.0..36.0) {
+                    _uiState.value = current.copy(errorMessage = "ACT composite score must be between 1 and 36")
+                    return
+                }
+            }
+            "BITSAT" -> {
+                if (scoreNum !in 0.0..390.0) {
+                    _uiState.value = current.copy(errorMessage = "BITSAT score must be between 0 and 390")
+                    return
+                }
+            }
+            "GRE" -> {
+                if (scoreNum !in 260.0..340.0) {
+                    _uiState.value = current.copy(errorMessage = "GRE score must be between 260 and 340")
+                    return
+                }
+            }
+            "NEET" -> {
+                if (scoreNum !in 0.0..720.0) {
+                    _uiState.value = current.copy(errorMessage = "NEET score must be between 0 and 720")
+                    return
+                }
+            }
+            else -> {
+                if (scoreNum < 0.0) {
+                    _uiState.value = current.copy(errorMessage = "Exam score cannot be negative")
+                    return
+                }
+            }
         }
 
         viewModelScope.launch {
@@ -133,9 +214,9 @@ class AdmissionPredictorViewModel(
                 institutionName = current.selectedCollege?.name ?: "Target Institution",
                 programName = current.programName,
                 degree = current.degree,
-                gpa = gpaVal,
+                gpa = normalizedGpa,
                 testType = current.testType,
-                testScore = scoreVal
+                testScore = scoreNum
             )
 
             repository.predictAdmission(request)
@@ -143,19 +224,39 @@ class AdmissionPredictorViewModel(
                     val updatedHistory = listOf(result) + predictionHistory
                     _uiState.value = AdmissionPredictorUiState.ResultSuccess(
                         prediction = result,
+                        lastForm = current.copy(isSubmitting = false),
                         history = updatedHistory
                     )
                 }
                 .onFailure { err ->
-                    _uiState.value = current.copy(isSubmitting = false, errorMessage = err.message ?: "Failed to calculate prediction")
+                    _uiState.value = current.copy(
+                        isSubmitting = false,
+                        errorMessage = err.message ?: "Failed to calculate prediction"
+                    )
                 }
         }
     }
 
+    fun editLastInputs() {
+        val current = _uiState.value
+        if (current is AdmissionPredictorUiState.ResultSuccess && current.lastForm != null) {
+            _uiState.value = current.lastForm.copy(errorMessage = null)
+        } else {
+            resetForm()
+        }
+    }
+
     fun resetForm() {
+        val firstCollege = availableColleges.firstOrNull()
         _uiState.value = AdmissionPredictorUiState.Form(
             colleges = availableColleges,
-            selectedCollege = availableColleges.firstOrNull()
+            selectedCollege = firstCollege,
+            programName = firstCollege?.programs?.firstOrNull()?.name ?: "",
+            degree = firstCollege?.programs?.firstOrNull()?.degree ?: "B.TECH",
+            gpa = "",
+            testType = "JEE_MAIN",
+            testScore = "",
+            errorMessage = null
         )
     }
 }

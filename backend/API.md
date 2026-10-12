@@ -3,7 +3,7 @@
 ## 1. Global Conventions
 
 ### Base URLs
-- **Production (Render)**: `https://campusverse-backend.onrender.com/api/v1`
+- **Production (Render)**: `https://campusverse-backend-api.onrender.com/api/v1`
 - **Local Development**: `http://localhost:4000/api/v1`
 
 ### Authentication & Authorization

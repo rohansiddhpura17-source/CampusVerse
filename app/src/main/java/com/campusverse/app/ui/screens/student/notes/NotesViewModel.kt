@@ -199,10 +199,14 @@ class NotesViewModel(
 
     fun reportNote(noteId: String, reason: String) {
         viewModelScope.launch {
-            repository.reportNote(noteId, reason)
+            val result = repository.reportNote(noteId, reason)
             val curr = _uiState.value as? NotesUiState.Success
             if (curr != null) {
-                _uiState.value = curr.copy(actionMessage = "Note reported to campus moderation.")
+                if (result.isSuccess) {
+                    _uiState.value = curr.copy(actionMessage = "Note reported to campus moderation.")
+                } else {
+                    _uiState.value = curr.copy(actionMessage = result.exceptionOrNull()?.message ?: "Failed to report note. Please try again.")
+                }
             }
         }
     }

@@ -30,6 +30,15 @@ class NavigationRouteTest {
         assertEquals("admin_events", Screen.AdminEvents.route)
         assertEquals("admin_jobs", Screen.AdminJobs.route)
         assertEquals("admin_profile", Screen.AdminProfile.route)
+        assertEquals("aspirant_saved_colleges", Screen.AspirantSavedColleges.route)
+        assertEquals("aspirant_colleges", Screen.AspirantCollegeExplorer.route)
+        assertEquals("aspirant_college_comparison", Screen.AspirantCollegeComparison.route)
+        assertEquals("aspirant_predictor", Screen.AspirantPredictor.route)
+        assertEquals("aspirant_scholarships", Screen.AspirantScholarships.route)
+        assertEquals("aspirant_saved_scholarships", Screen.AspirantSavedScholarships.route)
+        assertEquals("aspirant_profile", Screen.AspirantProfile.route)
+        assertEquals("aspirant_settings", Screen.AspirantSettings.route)
+        assertEquals("aspirant_notifications", Screen.AspirantNotifications.route)
     }
 
     @Test

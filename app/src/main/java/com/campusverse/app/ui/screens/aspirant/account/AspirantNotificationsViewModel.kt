@@ -30,18 +30,31 @@ class AspirantNotificationsViewModel(
     fun loadNotifications() {
         viewModelScope.launch {
             _uiState.value = AspirantNotificationsUiState.Loading
-            repository.getAspirantHomeSummary()
-                .onSuccess { summary ->
-                    val notifs = listOf(
-                        AlumniNotificationItem("notif_1", "SYSTEM", "Admission Predictor Updated", "NIT Bangalore CSE prediction calculated at 94.5% (Strong Candidate).", false, "2 hours ago"),
-                        AlumniNotificationItem("notif_2", "SCHOLARSHIP", "New Scholarship Matching Your Profile", "National Merit STEM Undergraduate Grant applications are now open.", false, "1 day ago"),
-                        AlumniNotificationItem("notif_3", "COLLEGE", "Application Deadline Approaching", "Stanford University Regular Decision deadline in 14 days.", true, "3 days ago")
-                    )
+            repository.getNotifications()
+                .onSuccess { notifs ->
                     _uiState.value = AspirantNotificationsUiState.Success(notifs)
                 }
                 .onFailure {
                     _uiState.value = AspirantNotificationsUiState.Error("Failed to load notifications")
                 }
+        }
+    }
+
+    fun markAsRead(id: String) {
+        val current = (_uiState.value as? AspirantNotificationsUiState.Success)?.notifications ?: return
+        val updated = current.map { if (it.id == id) it.copy(isRead = true) else it }
+        _uiState.value = AspirantNotificationsUiState.Success(updated)
+        viewModelScope.launch {
+            repository.markNotificationAsRead(id)
+        }
+    }
+
+    fun markAllAsRead() {
+        val current = (_uiState.value as? AspirantNotificationsUiState.Success)?.notifications ?: return
+        val updated = current.map { it.copy(isRead = true) }
+        _uiState.value = AspirantNotificationsUiState.Success(updated)
+        viewModelScope.launch {
+            repository.markAllNotificationsAsRead()
         }
     }
 }

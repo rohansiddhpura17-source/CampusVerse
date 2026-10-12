@@ -56,6 +56,25 @@ class StudentProfileViewModel(
         fullName: String,
         bio: String?,
         location: String?,
+        skills: List<String>
+    ) {
+        val currState = _uiState.value as? StudentProfileUiState.Success ?: return
+        saveProfile(
+            fullName = fullName,
+            bio = bio,
+            location = location,
+            degree = currState.profile.degree,
+            branch = currState.profile.branch,
+            semester = currState.profile.semester,
+            cgpa = currState.profile.cgpa,
+            skills = skills
+        )
+    }
+
+    fun saveProfile(
+        fullName: String,
+        bio: String?,
+        location: String?,
         degree: String,
         branch: String,
         semester: Int,

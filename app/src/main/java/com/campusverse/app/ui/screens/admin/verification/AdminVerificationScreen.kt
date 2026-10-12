@@ -1,6 +1,7 @@
 package com.campusverse.app.ui.screens.admin.verification
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.campusverse.app.data.model.AdminVerificationItem
@@ -153,7 +155,9 @@ private fun VerificationContent(
     onSubmitReview: (String, String, String?) -> Unit
 ) {
     var rejectionReasonText by remember { mutableStateOf("") }
+    var requestInfoReasonText by remember { mutableStateOf("") }
     var showRejectDialog by remember { mutableStateOf(false) }
+    var showRequestInfoDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -212,7 +216,7 @@ private fun VerificationContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(state.verifications) { item ->
+                items(state.verifications, key = { it.id }) { item ->
                     VerificationCard(
                         item = item,
                         onReviewClick = { onStartReview(item) }
@@ -228,14 +232,34 @@ private fun VerificationContent(
         AlertDialog(
             onDismissRequest = { onStartReview(null) },
             title = {
-                Text(text = "Review Document: ${v.userName}", fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Review Document: ${v.userName}",
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             },
             text = {
-                Column {
-                    Text(text = "User Email: ${v.userEmail}", style = MaterialTheme.typography.bodySmall)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = "User Email: ${v.userEmail}",
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     Text(text = "Role: ${v.userRole}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                     Text(text = "Document Type: ${v.documentType.replace('_', ' ')}", style = MaterialTheme.typography.bodySmall)
-                    Text(text = "Document URL: ${v.documentUrl}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                    Text(
+                        text = "Document URL: ${v.documentUrl}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -268,7 +292,7 @@ private fun VerificationContent(
 
                     OutlinedButton(
                         onClick = {
-                            onSubmitReview(v.id, "REQUEST_INFO", "Please provide clearer document photo.")
+                            showRequestInfoDialog = true
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -315,6 +339,41 @@ private fun VerificationContent(
             },
             dismissButton = {
                 TextButton(onClick = { showRejectDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Request More Information Dialog
+    if (showRequestInfoDialog && state.reviewingItem != null) {
+        val v = state.reviewingItem
+        AlertDialog(
+            onDismissRequest = { showRequestInfoDialog = false },
+            title = { Text("Request More Information") },
+            text = {
+                OutlinedTextField(
+                    value = requestInfoReasonText,
+                    onValueChange = { requestInfoReasonText = it },
+                    label = { Text("Information Needed") },
+                    placeholder = { Text("e.g. Please upload clear photo showing name and validity date") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val reason = requestInfoReasonText.ifBlank { "Please provide clearer document verification photo." }
+                        onSubmitReview(v.id, "REQUEST_INFO", reason)
+                        showRequestInfoDialog = false
+                        requestInfoReasonText = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Submit Request")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRequestInfoDialog = false }) { Text("Cancel") }
             }
         )
     }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -66,6 +67,7 @@ import com.campusverse.app.ui.screens.aspirant.components.AspirantBottomBar
 fun CollegeExplorerScreen(
     onNavigateToCollegeDetails: (String) -> Unit = {},
     onNavigateToComparison: () -> Unit,
+    onNavigateToSavedColleges: () -> Unit = {},
     onNavigateToHome: () -> Unit,
     onNavigateToScholarships: () -> Unit,
     onNavigateToPredictor: () -> Unit,
@@ -88,6 +90,13 @@ fun CollegeExplorerScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToSavedColleges) {
+                        Icon(
+                            imageVector = Icons.Default.Bookmark,
+                            contentDescription = "Saved Colleges",
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                     IconButton(onClick = onNavigateToComparison) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.CompareArrows,
@@ -205,6 +214,17 @@ private fun CollegeExplorerList(
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                },
+                trailingIcon = {
+                    if (state.searchQuery.isNotBlank()) {
+                        IconButton(onClick = { onSearchChange("") }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Clear search",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(

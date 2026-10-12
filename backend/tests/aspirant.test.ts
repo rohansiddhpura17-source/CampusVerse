@@ -102,15 +102,38 @@ describe('Phase 6 — Aspirant Module API & Security Tests', () => {
     studentToken = studentLogin.body.data.token;
 
     // Find institutions for testing
-    let institutions = await prisma.institution.findMany({ take: 2 });
-    if (institutions.length < 2) {
-      const inst1 = await prisma.institution.create({
-        data: { name: 'Test Tech Institute', code: 'TTI-1', city: 'Rajkot', state: 'Gujarat', country: 'India', ranking: 1, verified: true }
+    let institutions = await prisma.institution.findMany({ include: { programs: true }, take: 2 });
+    if (institutions.length < 2 || institutions[0].programs.length === 0) {
+      const inst1 = await prisma.institution.upsert({
+        where: { code: 'TTI-1' },
+        update: { name: 'Test Technology Institute' },
+        create: {
+          name: 'Test Technology Institute',
+          code: 'TTI-1',
+          city: 'Rajkot',
+          state: 'Gujarat',
+          country: 'India',
+          ranking: 1,
+          verified: true,
+          programs: {
+            create: [
+              { name: 'Computer Science and Engineering', degree: 'B.TECH', major: 'Computer Science', tuitionFee: '₹1,50,000 / year', durationYears: 4 }
+            ]
+          }
+        },
+        include: { programs: true }
       });
-      const inst2 = await prisma.institution.create({
-        data: { name: 'Global Science University', code: 'GSU-1', city: 'Munich', state: 'Bavaria', country: 'Germany', ranking: 2, verified: true }
+      if (inst1.programs.length === 0) {
+        await prisma.collegeProgram.create({
+          data: { institutionId: inst1.id, name: 'Computer Science and Engineering', degree: 'B.TECH', major: 'Computer Science', tuitionFee: '₹1,50,000 / year', durationYears: 4 }
+        });
+      }
+      await prisma.institution.upsert({
+        where: { code: 'GSU-1' },
+        update: {},
+        create: { name: 'Global Science University', code: 'GSU-1', city: 'Munich', state: 'Bavaria', country: 'Germany', ranking: 2, verified: true }
       });
-      institutions = [inst1, inst2];
+      institutions = await prisma.institution.findMany({ include: { programs: true }, take: 2 });
     }
     sampleCollegeId = institutions[0].id;
     sampleCollegeId2 = institutions[1].id;
@@ -132,6 +155,18 @@ describe('Phase 6 — Aspirant Module API & Security Tests', () => {
       });
     }
     sampleScholarshipId = scholarship.id;
+
+    // Ensure at least 1 saved college and 1 saved scholarship for aspirant home summary
+    await prisma.savedCollege.upsert({
+      where: { userId_institutionId: { userId: aspirantUserId, institutionId: sampleCollegeId } },
+      update: {},
+      create: { userId: aspirantUserId, institutionId: sampleCollegeId }
+    });
+    await prisma.savedScholarship.upsert({
+      where: { userId_scholarshipId: { userId: aspirantUserId, scholarshipId: sampleScholarshipId } },
+      update: {},
+      create: { userId: aspirantUserId, scholarshipId: sampleScholarshipId }
+    });
   });
 
   afterAll(async () => {
@@ -146,7 +181,7 @@ describe('Phase 6 — Aspirant Module API & Security Tests', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.profile.fullName).toBe('Rohan Mehta');
+      expect(res.body.data.profile.fullName).toBe('Kavya Sharma');
       expect(res.body.data.savedCollegesCount).toBeGreaterThanOrEqual(1);
       expect(res.body.data.savedScholarshipsCount).toBeGreaterThanOrEqual(1);
       expect(Array.isArray(res.body.data.recommendedColleges)).toBe(true);

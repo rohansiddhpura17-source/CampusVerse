@@ -58,6 +58,7 @@ class AdminLoginViewModel(
                     if (user.role == UserRole.ADMIN && user.isAdminAuthorized) {
                         _uiState.value = AdminLoginUiState.Success(user)
                     } else {
+                        authRepository.logout()
                         _uiState.value = current.copy(
                             isLoading = false,
                             errorMessage = "Access Denied: Account '${user.email}' is not an authorized administrator."

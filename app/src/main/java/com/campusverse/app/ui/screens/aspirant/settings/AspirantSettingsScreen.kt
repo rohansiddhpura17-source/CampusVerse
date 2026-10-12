@@ -73,11 +73,27 @@ fun AspirantSettingsScreen(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val fingerprintManager = remember(context) {
+        try {
+            androidx.core.hardware.fingerprint.FingerprintManagerCompat.from(context)
+        } catch (_: Exception) {
+            null
+        }
+    }
+    val isBiometricAvailable = remember(fingerprintManager) {
+        try {
+            fingerprintManager?.isHardwareDetected == true && fingerprintManager.hasEnrolledFingerprints()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     var admissionAlerts by remember { mutableStateOf(true) }
     var scholarshipReminders by remember { mutableStateOf(true) }
     var emailNotifications by remember { mutableStateOf(true) }
-    var biometricLogin by remember { mutableStateOf(true) }
-    var twoFactorAuth by remember { mutableStateOf(true) }
+    var biometricLogin by remember(isBiometricAvailable) { mutableStateOf(false) }
+    var twoFactorAuth by remember { mutableStateOf(false) }
 
     var showPasswordDialog by remember { mutableStateOf(false) }
     var currentPassword by remember { mutableStateOf("") }
@@ -315,23 +331,24 @@ fun AspirantSettingsScreen(
                         SettingToggleRow(
                             icon = Icons.Default.Fingerprint,
                             title = "Biometric Login",
-                            subtitle = "Use fingerprint or face unlock",
-                            checked = biometricLogin,
+                            subtitle = if (isBiometricAvailable) "Use fingerprint or face unlock" else "Biometric hardware not available or not enrolled on this device",
+                            checked = if (isBiometricAvailable) biometricLogin else false,
+                            enabled = isBiometricAvailable,
                             onCheckedChange = {
-                                biometricLogin = it
-                                scope.launch { snackbarHostState.showSnackbar("Biometric login ${if (it) "enabled" else "disabled"}") }
+                                if (isBiometricAvailable) {
+                                    biometricLogin = it
+                                    scope.launch { snackbarHostState.showSnackbar("Biometric login ${if (it) "enabled" else "disabled"}") }
+                                }
                             }
                         )
                         HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         SettingToggleRow(
                             icon = Icons.Default.VerifiedUser,
                             title = "Two-Factor Authentication",
-                            subtitle = "OTP verification on new sign-ins",
-                            checked = twoFactorAuth,
-                            onCheckedChange = {
-                                twoFactorAuth = it
-                                scope.launch { snackbarHostState.showSnackbar("2FA ${if (it) "enabled" else "disabled"}") }
-                            }
+                            subtitle = "Server-side 2FA is currently managed by institution administrators (unavailable for mobile sign-in)",
+                            checked = false,
+                            enabled = false,
+                            onCheckedChange = {}
                         )
                     }
                 }
@@ -466,6 +483,7 @@ private fun SettingToggleRow(
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -482,7 +500,7 @@ private fun SettingToggleRow(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
                 modifier = Modifier.size(22.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -491,17 +509,18 @@ private fun SettingToggleRow(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                 )
             }
         }
         Switch(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = onCheckedChange
         )
     }
